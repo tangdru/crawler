@@ -10,12 +10,15 @@ const EMO_COLORS = { fear: "#b07cff", anger: "#ff6b5e", sadness: "#6da7ec", joy:
 const POS_RGB = "57,135,229", NEG_RGB = "230,103,103";
 
 export class Crawler {
-  constructor({ canvas, onProgress, onEntity, onDone }) {
+  constructor({ canvas, onProgress, onEntity, onDone, onEvidence, getCardPos }) {
     this.cv = canvas;
     this.ctx = canvas.getContext("2d");
     this.onProgress = onProgress || (() => {});
     this.onEntity = onEntity || (() => {});
     this.onDone = onDone || (() => {});
+    this.onEvidence = onEvidence || (() => {});
+    this.getCardPos = getCardPos || (() => null);
+    this.wallLinks = [];
     this.reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.playing = false;
     this.speed = 2;
@@ -87,7 +90,7 @@ export class Crawler {
     this.lens = lens;
     this.clearMarks();
     this.idx = 0; this.dwell = 0;
-    this.effects.length = 0; this.hits.length = 0; this.threads.length = 0;
+    this.effects.length = 0; this.hits.length = 0; this.threads.length = 0; this.wallLinks.length = 0;
     this.seen = new Map();
     this.lastBlock = -1;
     this.mood = [];
@@ -109,6 +112,12 @@ export class Crawler {
 
   /* ---------- reading ---------- */
   dwellFor(t) {
+    if (this.lens === "scan") return 0.012 + Math.min(t.text.length, 12) * 0.003;
+    if (this.lens === "themes") {
+      const hit = this.a.themeIndex && this.a.themeIndex.get(t.sentence);
+      if (hit && this.model.sentences[t.sentence].tokStart === t.i) return 0.7;
+      return hit ? 0.05 : 0.014 + Math.min(t.text.length, 12) * 0.004;
+    }
     const ents = this.model.entityAt.get(t.i);
     if (this.lens === "references") {
       if (ents) return ents.some((e) => ENTITY_TYPES[e.type].fx !== "tag") ? 0.6 : 0.22;
@@ -131,8 +140,10 @@ export class Crawler {
     const ents = m.entityAt.get(t.i);
     if (ents) for (const e of ents) this.markEntity(e, loud && this.lens === "references");
 
-    if (this.lens === "references") {
+    if (this.lens === "references" || this.lens === "scan") {
       if (!t.atomic) t.el.classList.add("read");
+    } else if (this.lens === "themes") {
+      this.readThemes(t, loud);
     } else if (this.lens === "trends") {
       this.readTrends(t, loud);
     } else {
@@ -193,6 +204,28 @@ export class Crawler {
       if (this.threads.length > 80) this.threads.shift();
       if (this.effects.length < 40) this.effects.push({ kind: "tag", t, text: "", label: `${k.term} ×${prev.n + 1}`, color: "#33e1ff", born: now, life: 900 });
     }
+  }
+
+  readThemes(t, loud) {
+    t.el.classList.add("read");
+    const hits = this.a.themeIndex && this.a.themeIndex.get(t.sentence);
+    if (!hits) return;
+    const theme = hits[0].theme;
+    const sent = this.model.sentences[t.sentence];
+    const col = hexA(theme.color, 0.26);
+    t.el.style.background = col;
+    if (t.i + 1 < sent.tokEnd) t.el.style.boxShadow = `0.32em 0 0 ${col}`;
+    if (sent.tokStart !== t.i) return;
+    for (const h of hits) this.onEvidence(h.theme, h.ev);
+    if (!loud) return;
+    const now = performance.now();
+    for (const h of hits.slice(0, 2)) {
+      const tension = h.theme.kind === "tension";
+      if (this.effects.length < 40) this.effects.push({ kind: "callout", t, text: h.theme.title, label: `${tension ? "tension" : "theme"} ${h.theme.id + 1}${tension ? (h.ev.stance === "contradicts" ? " · against" : " · for") : ""}`, color: h.theme.color, born: now, life: 2600, angle: 0, dx: 14, dy: -38, small: true });
+      this.wallLinks.push({ x: t.cx, y: t.cy, theme: h.theme.id, color: h.theme.color, born: now });
+    }
+    if (this.wallLinks.length > 30) this.wallLinks.splice(0, this.wallLinks.length - 30);
+    this.grab(t);
   }
 
   readTone(t, loud) {
@@ -272,15 +305,23 @@ export class Crawler {
   updateBody(dt) {
     const b = this.body;
     const tx = this.gaze.x - 18, ty = this.gaze.y + 26;
-    const k = 9 * Math.min(this.speed, 3), damp = 0.82;
-    b.vx = (b.vx + (tx - b.x) * k * dt) * damp;
-    b.vy = (b.vy + (ty - b.y) * k * dt) * damp;
-    b.x += b.vx; b.y += b.vy;
+    // Critically damped spring in fixed substeps, so slow frames can't fling the body.
+    const k = 60 * Math.min(this.speed, 3), c = 2 * Math.sqrt(k);
+    if (!isFinite(b.x) || !isFinite(b.y)) { b.x = tx; b.y = ty; b.vx = b.vy = 0; }
+    let left = dt;
+    while (left > 0) {
+      const h = Math.min(left, 1 / 120);
+      b.vx += ((tx - b.x) * k - b.vx * c) * h;
+      b.vy += ((ty - b.y) * k - b.vy * c) * h;
+      b.x += b.vx * h; b.y += b.vy * h;
+      left -= h;
+    }
+    const vfx = b.vx / 60, vfy = b.vy / 60; // per-frame velocity, for leg placement
     const moving = this.legs.filter((L) => L.t < 1).length;
     for (const L of this.legs) {
       if (L.t < 1) L.t = Math.min(1, L.t + dt * (5 + Math.min(this.speed, 6) * 2));
-      const ix = b.x + Math.cos(L.a) * L.r + b.vx * 6;
-      const iy = b.y + Math.sin(L.a) * L.r * 0.8 + b.vy * 6;
+      const ix = b.x + Math.cos(L.a) * L.r + vfx * 6;
+      const iy = b.y + Math.sin(L.a) * L.r * 0.8 + vfy * 6;
       if (L.t >= 1 && Math.hypot(L.fx - ix, L.fy - iy) > 46 && moving < 3) {
         let best = null, score = Infinity;
         for (const t of this.near(iy, 70)) {
@@ -328,6 +369,21 @@ export class Crawler {
 
   drawThreads(now) {
     const ctx = this.ctx;
+    ctx.lineWidth = 1;
+    for (const l of this.wallLinks) {
+      const age = (now - l.born) / 3500;
+      if (age > 1) continue;
+      const card = this.getCardPos(l.theme);
+      if (!card) continue;
+      ctx.strokeStyle = hexA(l.color, 0.75 * (1 - age));
+      ctx.lineWidth = 1.2;
+      const x1 = l.x, y1 = this.sy(l.y);
+      ctx.beginPath(); ctx.moveTo(x1, y1);
+      ctx.bezierCurveTo(x1 + (card.x - x1) * 0.6, y1, card.x - 60, card.y, card.x, card.y);
+      ctx.stroke();
+      ctx.fillStyle = hexA(l.color, 1 - age);
+      ctx.beginPath(); ctx.arc(card.x, card.y, 3, 0, Math.PI * 2); ctx.fill();
+    }
     ctx.lineWidth = 1;
     for (const th of this.threads) {
       const age = (now - th.born) / 6000;
@@ -385,7 +441,7 @@ export class Crawler {
     ctx.beginPath();
     for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j += 2) { ctx.moveTo(nodes[i][0], nodes[i][1]); ctx.lineTo(nodes[j][0], nodes[j][1]); }
     ctx.stroke();
-    const core = { references: "#ff3fd8", trends: "#33e1ff", tone: "#ffd84d" }[this.lens];
+    const core = { references: "#ff3fd8", trends: "#33e1ff", tone: "#ffd84d", themes: "#46f08a", scan: "#46f08a" }[this.lens];
     ctx.fillStyle = core; ctx.fillRect(bx - 4, by - 4, 8, 8);
     ctx.strokeStyle = "#fff"; ctx.strokeRect(bx - 6.5, by - 6.5, 13, 13);
     ctx.fillStyle = "#62ffd0";
@@ -406,9 +462,9 @@ export class Crawler {
       const x = e.t.x, y = this.sy(e.t.y);
       ctx.save();
       if (e.kind === "callout") {
-        const big = Math.min(30, Math.max(20, W / 26));
+        const big = e.small ? Math.min(19, Math.max(14, W / 48)) : Math.min(30, Math.max(20, W / 26));
         ctx.font = `600 ${big}px ${MONO}`;
-        const text = fit(e.text.replace(/^(doi:|ISBN:?|PMID:?|Bibcode:)\s?/i, "").replace(/^https?:\/\/(www\.)?/, ""), 28);
+        const text = fit(e.text.replace(/^(doi:|ISBN:?|PMID:?|Bibcode:)\s?/i, "").replace(/^https?:\/\/(www\.)?/, ""), e.small ? 44 : 28);
         const tw = ctx.measureText(text).width;
         let cx = Math.min(x + e.dx, W - tw - 16); cx = Math.max(12, cx);
         const cy = y + e.dy;
@@ -459,4 +515,9 @@ export class Crawler {
       ctx.restore();
     }
   }
+}
+
+function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a.toFixed(3)})`;
 }

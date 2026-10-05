@@ -20,6 +20,7 @@
       <button type="button" role="radio" data-lens="references" aria-checked="true">References</button>
       <button type="button" role="radio" data-lens="trends" aria-checked="false">Trends</button>
       <button type="button" role="radio" data-lens="tone" aria-checked="false">Tone</button>
+      <button type="button" role="radio" data-lens="themes" aria-checked="false">Themes</button>
     </div>
   </div>
   <div class="ctl">
@@ -39,6 +40,7 @@
         <button type="button" data-export="entities">entities.csv <span>every reference found</span></button>
         <button type="button" data-export="sentences">sentences.csv <span>one row per sentence</span></button>
         <button type="button" data-export="terms">terms.csv <span>needs a Trends crawl</span></button>
+        <button type="button" data-export="themes">themes.csv <span>one row per theme and quote</span></button>
         <button type="button" data-export="zip">All as .zip</button>
       </div>
     </div>
@@ -48,9 +50,15 @@
 <canvas id="fx" aria-hidden="true"></canvas>
 
 <main id="docView">
+  <nav class="source-bar" id="sourceBar" aria-label="Sources in this project"></nav>
   <div class="docmeta" id="docMeta"></div>
   <article id="doc"></article>
 </main>
+
+<aside class="wall" id="wall" hidden aria-label="Theme wall">
+  <div class="wall-head"><span>Theme wall <span class="muted" id="wallSub"></span></span><button type="button" id="rerunThemes" class="ghost">Run again</button></div>
+  <div id="wallCards"></div>
+</aside>
 
 <section id="summaryView" class="summary" hidden></section>
 
@@ -63,7 +71,7 @@
 <div class="sheet" id="sheet" hidden>
   <div class="card" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
     <div class="sheet-head">
-      <h3 id="sheetTitle">Open something to crawl</h3>
+      <h3 id="sheetTitle">Add a source</h3>
       <button type="button" id="closeSheet" class="ghost" aria-label="Close">Close</button>
     </div>
     <form id="urlForm" class="src">
@@ -77,24 +85,44 @@
     <div class="src">
       <label for="fileIn">File</label>
       <label class="drop" id="drop" for="fileIn">
-        <input id="fileIn" type="file" accept=".pdf,.docx,.xlsx,.xls,.ods,.csv,.tsv,.pptx,.odt,.odp,.epub,.rtf,.html,.htm,.md,.markdown,.txt,.json,text/*">
-        <b>Drop a file here</b> or click to choose one
+        <input id="fileIn" type="file" multiple accept=".pdf,.docx,.xlsx,.xls,.ods,.csv,.tsv,.pptx,.odt,.odp,.epub,.rtf,.html,.htm,.md,.markdown,.txt,.json,text/*">
+        <b>Drop files here</b> or click to choose them
         <span class="hint">PDF, Word, Excel, PowerPoint, EPUB, OpenDocument, HTML, Markdown, text, CSV, JSON, RTF</span>
       </label>
     </div>
     <form id="pasteForm" class="src">
       <label for="pasteIn">Paste text</label>
-      <textarea id="pasteIn" placeholder="Paste an article, a reference list, notes… or a web address."></textarea>
-      <div class="inline end"><button type="submit" class="primary">Crawl this text</button></div>
+      <textarea id="pasteIn" placeholder="Paste an article, interview notes, a reference list… or a web address."></textarea>
+      <div class="inline end"><button type="submit" class="primary">Add this text</button></div>
     </form>
     <div class="src">
-      <span class="lab">Samples</span>
+      <span class="lab">Sample projects</span>
       <div class="inline">
-        <button type="button" data-sample="references">Reference list</button>
-        <button type="button" data-sample="article">News article</button>
+        <button type="button" data-sample="river">River restoration (3 sources)</button>
+        <button type="button" data-sample="references">Spider reference list</button>
       </div>
+      <p class="hint">A sample replaces the current project.</p>
     </div>
+    <label class="check"><input type="checkbox" id="replaceProject"> Start a new project with this source (removes the current sources and themes)</label>
     <p class="error" id="sheetError" role="alert" hidden></p>
+  </div>
+</div>
+
+<div class="sheet" id="themesSheet" hidden>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="themesTitle">
+    <h3 id="themesTitle">Find themes across your sources</h3>
+    <p class="hint" id="themesInfo"></p>
+    <div class="src">
+      <label for="themesQuestion">Research question (optional)</label>
+      <textarea id="themesQuestion" class="short" placeholder="e.g. What worries residents about the project, and what would win their support?"></textarea>
+    </div>
+    <p class="hint">Every quote Claude returns is checked against your text; quotes that don't appear word for word are removed.</p>
+    <p class="hint" id="themesStale" hidden>You have themes from an earlier run that don't cover every source. <button type="button" id="themesShowOld" class="ghost inline-btn">Show the earlier themes</button></p>
+    <p class="error" id="themesError" role="alert" hidden></p>
+    <div class="inline end">
+      <button type="button" id="themesCancel">Cancel</button>
+      <button type="button" id="themesRun" class="primary">Find themes with Claude</button>
+    </div>
   </div>
 </div>
 

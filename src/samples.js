@@ -72,7 +72,78 @@ const RIVER = {
   ]
 };
 
+
+const INTERVIEWS = {
+  title: "Resident interviews, River Road",
+  sections: [
+    { h: null, p: [
+      "Field notes from six short interviews conducted on River Road between 18 and 22 March 2026. Names are changed. Interviewer questions are in brackets."
+    ]},
+    { h: "Interview 1: café owner, 41", p: [
+      "[How do you feel about the vote?] Honestly, nervous. I want the river back, everyone does, but three years of half a road is a long time for a small business.",
+      "The last road works took eighteen months and we lost about a third of our lunch trade. Nobody from the city came to talk to us then, and nobody has come now.",
+      "If they gave us a clear timeline and some help with signage, I think most of us would get behind it."
+    ]},
+    { h: "Interview 2: retired teacher, 70", p: [
+      "[What do you remember about the river?] I remember swimming in it before they poured the concrete. My grandchildren have never seen it as anything but a ditch.",
+      "I think it's the right thing to do. I worry about the cost, of course, but I worry more about the next big storm.",
+      "The flood maps scared me. My street is on them."
+    ]},
+    { h: "Interview 3: parent of two, 35", p: [
+      "[Would you use the restored river?] Every weekend. There's no green space in this part of town at all.",
+      "My kids play in a car park. A park along the water would change this neighbourhood.",
+      "I'm not sure I trust the timeline, though. Things here always take twice as long as they say."
+    ]},
+    { h: "Interview 4: hardware store owner, 58", p: [
+      "[Did you support the plan?] No. I think it's a vanity project. The council can't fix potholes, and now they want to rebuild a river?",
+      "The money would be better spent on repairing the channel and lowering business rates.",
+      "If construction runs late, half the shops on this street will be gone."
+    ]},
+    { h: "Interview 5: nurse, 29", p: [
+      "[What would make the project work for you?] Honest updates. Put the schedule and the budget online and update them every month.",
+      "People will put up with a lot if they feel they're being told the truth."
+    ]},
+    { h: "Interview 6: retired engineer, 66", p: [
+      "[Do you think the flood design will work?] The principle is sound. Wide banks hold water. But everything depends on the wetlands upstream, and the plan is vague about who manages them.",
+      "I'd want to see the maintenance budget for the next thirty years, not just the construction cost."
+    ]}
+  ]
+};
+
+const MEMO = {
+  title: "Council finance briefing: river restoration",
+  sections: [
+    { h: null, p: [
+      "Briefing note prepared for the finance committee, 2 April 2026. Draft for discussion; figures are estimates."
+    ]},
+    { h: "Costs", p: [
+      "The approved budget is $214 million, including a contingency of $18 million. The independent review rated the estimate as reasonable, but noted that projects of this kind have historically exceeded their budgets by 15 to 25 percent.",
+      "Annual maintenance of the restored banks and upstream wetlands is estimated at $1.4 million. This figure is not yet included in the long-term operating budget."
+    ]},
+    { h: "Funding", p: [
+      "The plan assumes $71 million in federal resilience grants. Officials expect a decision by October 2026, but approval is not guaranteed.",
+      "If the grants are refused, the city would need to borrow the shortfall or phase the project over a longer period."
+    ]},
+    { h: "Support for local businesses", p: [
+      "Staff recommend a $2 million fund to support businesses on River Road during construction, including signage, marketing and short-term rent relief.",
+      "Evidence from similar projects suggests that clear communication about timelines matters as much as direct financial help."
+    ]},
+    { h: "Risks", p: [
+      "The main financial risks are construction delays, rising material costs and the federal grant decision.",
+      "Doing nothing is not free: emergency repairs to the existing channel would cost roughly $90 million and would not reduce flood risk for the 4,000 homes on the city's flood maps."
+    ]}
+  ]
+};
+
 export const SAMPLES = {
   references: () => toDoc(SPIDERS, { sample: true, note: "Sample reference list. The citations are illustrative, not real sources." }),
-  article: () => toDoc(RIVER, { sample: true, note: "Sample news article. The city, people and figures are fictional." })
+  article: () => toDoc(RIVER, { sample: true, note: "Sample news article. The city, people and figures are fictional." }),
+  interviews: () => toDoc(INTERVIEWS, { sample: true, note: "Sample interview notes. The people and quotes are fictional." }),
+  memo: () => toDoc(MEMO, { sample: true, note: "Sample council briefing. The figures are fictional." })
+};
+
+// Sample projects: each is a list of sources.
+export const SAMPLE_PROJECTS = {
+  river: { name: "River restoration (3 sources)", sources: ["article", "interviews", "memo"] },
+  references: { name: "Spider reference list", sources: ["references"] }
 };

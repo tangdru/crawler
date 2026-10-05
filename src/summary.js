@@ -86,31 +86,188 @@ export class Summary {
     return Math.max(240, Math.min(col - 34, 1100));
   }
 
-  render(state) {
-    this.state = state;
-    const { model, ran } = state;
-    this.root.textContent = "";
-    const head = document.createElement("header");
-    head.className = "sum-head";
-    const any = ran.references || ran.trends || ran.tone;
-    const lensNames = ["references", "trends", "tone"].filter((l) => ran[l]).map((l) => l[0].toUpperCase() + l.slice(1));
-    head.innerHTML = `<div class="eyebrow">Summary · ${esc(model.title)}</div>
-      <h2>${any ? `What the crawler found` : `Run a crawl to build the summary`}</h2>
-      <p class="sub">${any ? `Built from: ${lensNames.join(" + ")}. Every crawl also collects references, dates and quotes. ${!ran.trends || !ran.tone ? "Run the other lenses to add more panels." : "All lenses have run, so the combined panels are shown too."}` : "Pick a lens and press Play. Each lens you run adds its panels here, and nothing is lost when you switch."}</p>`;
-    this.root.appendChild(head);
-    if (!any) return;
-    this.tiles(state);
+  section(title, sub) {
+    const h = document.createElement("div");
+    h.className = "sec-head";
+    h.innerHTML = `<h2>${esc(title)}</h2>${sub ? `<p class="sub">${esc(sub)}</p>` : ""}`;
+    this.root.appendChild(h);
     this.grid = document.createElement("div");
     this.grid.className = "panels";
     this.root.appendChild(this.grid);
+  }
 
-    this.entityBars(state);
-    this.yearColumns(state);
-    if (ran.trends) { this.keywords(state); this.termTrends(state); this.topicStrip(state); this.cooc(state); }
-    if (ran.tone) { this.moodLine(state); this.emotionHeat(state); this.hedgeLines(state); this.uncited(state); }
-    if (ran.trends && ran.tone) this.moodByTopic(state);
-    this.quotes(state);
-    this.entityTable(state);
+  // project: { sources, active, themes }. Panels add up as lenses run.
+  render(project) {
+    this.project = project;
+    const view = project.sources[project.active];
+    const { model, ran } = view;
+    this.root.textContent = "";
+    const anySource = project.sources.some((s) => s.ran.references || s.ran.trends || s.ran.tone);
+    const any = ran.references || ran.trends || ran.tone;
+    const head = document.createElement("header");
+    head.className = "sum-head";
+    const n = project.sources.length;
+    head.innerHTML = `<div class="eyebrow">Summary · ${n} source${n === 1 ? "" : "s"}</div>
+      <h2>${project.themes || anySource ? "What the crawler found" : "Run a crawl to build the summary"}</h2>
+      <p class="sub">${project.themes || anySource ? "Each lens you run adds panels here. Themes cover the whole project; the other lenses report on each source." : "Pick a lens and press Play. Each lens you run adds its panels here, and nothing is lost when you switch."}</p>`;
+    this.root.appendChild(head);
+
+    if (project.themes) this.themesSection(project);
+    if (n > 1 && anySource) this.sourcesSection(project);
+
+    const lensNames = ["references", "trends", "tone"].filter((l) => ran[l]).map((l) => l[0].toUpperCase() + l.slice(1));
+    this.section(n > 1 ? `This source: ${model.title}` : model.title,
+      any ? `Built from: ${lensNames.join(" + ")}. ${!ran.trends || !ran.tone ? "Run the other lenses on this source to add more panels." : "Trends and Tone have both run, so the combined panels are shown too."}`
+          : "No lens has run on this source yet. Pick one and press Play.");
+    if (!any) return;
+    this.tiles(view);
+    this.root.appendChild(this.grid); // keep tiles above this source's panels
+    this.entityBars(view);
+    this.yearColumns(view);
+    if (ran.trends) { this.keywords(view); this.termTrends(view); this.topicStrip(view); this.cooc(view); }
+    if (ran.tone) { this.moodLine(view); this.emotionHeat(view); this.hedgeLines(view); this.uncited(view); }
+    if (ran.trends && ran.tone) this.moodByTopic(view);
+    this.quotes(view);
+    this.entityTable(view);
+  }
+
+  /* ---------- project level ---------- */
+  themesSection(project) {
+    const res = project.themes;
+    const keys = new Set(project.sources.map((s) => s.key));
+    const covered = res.sourceKeys.filter((k) => keys.has(k)).length;
+    const missing = project.sources.filter((s) => !res.sourceKeys.includes(s.key)).length;
+    const notes = [];
+    if (missing) notes.push(`${missing} source${missing === 1 ? " was" : "s were"} added after this run; run Themes again to include ${missing === 1 ? "it" : "them"}.`);
+    if (res.dropped) notes.push(`${res.dropped} quote${res.dropped === 1 ? "" : "s"} couldn't be found word for word in the text and ${res.dropped === 1 ? "was" : "were"} removed.`);
+    this.section(`Themes across ${covered} source${covered === 1 ? "" : "s"}`,
+      `Found by Claude, then checked by this page: every quote below appears word for word in its source. ${notes.join(" ")}`);
+
+    const ov = this.panel("Overview", res.question ? `Research question: ${res.question}` : "", true);
+    const p = document.createElement("p"); p.className = "overview"; p.textContent = res.overview; ov.appendChild(p);
+
+    const idx = new Map(project.sources.map((s, i) => [s.key, i]));
+    const body = this.panel("Themes and evidence", "Most important first. Click a quote to read it in context.", true);
+    const wrap = document.createElement("div"); wrap.className = "theme-cards"; body.appendChild(wrap);
+    for (const t of res.themes) {
+      const evs = t.evidence.filter((e) => idx.has(e.sourceKey));
+      const srcCount = new Set(evs.map((e) => e.sourceKey)).size;
+      const card = document.createElement("article");
+      card.className = "theme-card";
+      card.innerHTML = `<header><i class="sw" style="background:${t.color}"></i><span class="num">${t.id + 1}</span>
+          <h4>${esc(t.title)}</h4></header>
+        <div class="chips">${t.kind === "tension" ? '<span class="chip tension">Tension</span>' : ""}<span class="chip">${esc(t.prevalence)}</span><span class="chip">${srcCount} of ${project.sources.length} source${project.sources.length === 1 ? "" : "s"}</span><span class="chip">${evs.length} quote${evs.length === 1 ? "" : "s"}</span></div>
+        <p class="tsum">${esc(t.summary)}</p>`;
+      const ul = document.createElement("ul"); ul.className = "evidence";
+      const ordered = t.kind === "tension" ? [...evs].sort((a, b) => (a.stance > b.stance ? -1 : 1)) : evs;
+      for (const e of ordered) {
+        const i = idx.get(e.sourceKey);
+        const li = document.createElement("li");
+        li.tabIndex = 0;
+        li.innerHTML = `${t.kind === "tension" ? `<span class="stance ${e.stance}">${e.stance === "contradicts" ? "Against" : "For"}</span>` : ""}<q>${esc(e.quote)}</q> <span class="src">S${i + 1} · ${esc(project.sources[i].model.title.slice(0, 40))}</span>`;
+        const go = () => this.jump({ sourceKey: e.sourceKey, sentence: e.sentence });
+        li.addEventListener("click", go);
+        li.addEventListener("keydown", (ev) => { if (ev.key === "Enter") go(); });
+        ul.appendChild(li);
+      }
+      card.appendChild(ul);
+      wrap.appendChild(card);
+    }
+    if (project.sources.length > 1) this.themeMatrix(project, idx);
+  }
+
+  themeMatrix(project, idx) {
+    const res = project.themes;
+    const body = this.panel("Which sources support which theme", "Quotes per theme in each source. Empty cells mean the theme doesn't appear there. Click a cell to read the first quote.", true);
+    const W = this.width(body);
+    const n = project.sources.length;
+    const lab = Math.min(300, W * 0.45), cw = Math.max(34, Math.min(70, (W - lab - 8) / n)), ch = 28, top = 40;
+    const s = svg(lab + n * cw + 8, top + res.themes.length * ch + 4);
+    project.sources.forEach((src, j) => {
+      el(s, "text", { x: lab + j * cw + cw / 2, y: 16, "text-anchor": "middle", class: "t-value" }, `S${j + 1}`);
+      el(s, "text", { x: lab + j * cw + cw / 2, y: 31, "text-anchor": "middle", class: "t-axis" }, src.model.title.length > 9 ? src.model.title.slice(0, 8) + "…" : src.model.title);
+    });
+    const max = Math.max(1, ...res.themes.map((t) => Math.max(...project.sources.map((src) => t.evidence.filter((e) => e.sourceKey === src.key).length))));
+    res.themes.forEach((t, i) => {
+      const y = top + i * ch;
+      el(s, "rect", { x: 0, y: y + 9, width: 8, height: 8, rx: 2, fill: t.color });
+      el(s, "text", { x: 14, y: y + 17, class: "t-label" }, (t.id + 1) + ". " + (t.title.length > Math.floor(lab / 7.2) ? t.title.slice(0, Math.floor(lab / 7.2) - 1) + "…" : t.title));
+      project.sources.forEach((src, j) => {
+        const evs = t.evidence.filter((e) => e.sourceKey === src.key);
+        const v = evs.length;
+        const k = v ? Math.min(C.seq.length - 1, 1 + Math.floor((v / max) * (C.seq.length - 1.01))) : 0;
+        const r = el(s, "rect", { x: lab + j * cw + 2, y: y + 2, width: cw - 4, height: ch - 4, rx: 3, fill: C.seq[k] });
+        if (v) el(s, "text", { x: lab + j * cw + cw / 2, y: y + ch / 2 + 4, "text-anchor": "middle", class: k >= 4 ? "t-dark" : "t-value", "pointer-events": "none" }, v);
+        this.hover(r, `<b>${esc(t.title)}</b><br>S${j + 1} · ${esc(src.model.title)}<br>${v} quote${v === 1 ? "" : "s"}${v ? `<br><span class="muted">“${esc(evs[0].quote.slice(0, 120))}”</span>` : ""}`,
+          v ? () => this.jump({ sourceKey: src.key, sentence: evs[0].sentence }) : null);
+      });
+    });
+    body.appendChild(s);
+  }
+
+  sourcesSection(project) {
+    this.section("Sources compared", "One row per source. Keyword and mood columns fill in once Trends or Tone has run on that source.");
+    const body = this.panel("Sources", "", true);
+    const wrap = document.createElement("div"); wrap.className = "twrap";
+    const rows = project.sources.map((src, i) => {
+      const m = src.model;
+      const kw = src.ran.trends ? src.trends.top.slice(0, 3).map((e) => e.term).join(", ") : "";
+      const mood = src.ran.tone ? src.tone.totals.mean : null;
+      return `<tr data-src="${i}"><td>S${i + 1}</td><td>${esc(m.title)}</td><td class="num">${m.wordCount.toLocaleString("en-US")}</td><td class="num">${m.entities.length}</td><td>${esc(kw) || '<span class="muted">run Trends</span>'}</td><td>${mood == null ? '<span class="muted">run Tone</span>' : `<span class="tone ${mood > 0.05 ? "p" : mood < -0.05 ? "n" : ""}">${(mood >= 0 ? "+" : "") + mood.toFixed(2)}</span>`}</td></tr>`;
+    }).join("");
+    wrap.innerHTML = `<table><thead><tr><th>ID</th><th>Source</th><th>Words</th><th>References</th><th>Top keywords</th><th>Mood</th></tr></thead><tbody>${rows}</tbody></table>`;
+    wrap.querySelectorAll("tr[data-src]").forEach((tr) => tr.addEventListener("click", () => this.jump({ sourceIndex: +tr.dataset.src })));
+    body.appendChild(wrap);
+
+    const withTrends = project.sources.filter((s) => s.ran.trends);
+    if (withTrends.length >= 2) this.keywordHeat(project, withTrends);
+    const withTone = project.sources.filter((s) => s.ran.tone);
+    if (withTone.length >= 2) this.moodBySource(project, withTone);
+  }
+
+  keywordHeat(project, srcs) {
+    const score = new Map();
+    for (const src of srcs) for (const e of src.trends.top) score.set(e.term, (score.get(e.term) || 0) + e.tfidf);
+    const terms = [...score.entries()].sort((a, b) => b[1] - a[1]).slice(0, 14).map(([t]) => t);
+    const body = this.panel("Keywords across sources", "Mentions per 1,000 words of each top keyword in each source (Trends must have run on the source). Shared vocabulary shows up as a full row.", true);
+    const W = this.width(body);
+    const lab = 110, cw = Math.max(34, Math.min(70, (W - lab - 8) / srcs.length)), ch = 22, top = 22;
+    const s = svg(lab + srcs.length * cw + 8, top + terms.length * ch + 4);
+    const rate = (src, t) => { const e = src.trends.terms.get(t); return e ? (e.count / Math.max(1, src.model.wordCount)) * 1000 : 0; };
+    const max = Math.max(1e-6, ...terms.flatMap((t) => srcs.map((src) => rate(src, t))));
+    srcs.forEach((src, j) => el(s, "text", { x: lab + j * cw + cw / 2, y: 14, "text-anchor": "middle", class: "t-value" }, `S${project.sources.indexOf(src) + 1}`));
+    terms.forEach((t, i) => {
+      el(s, "text", { x: lab - 8, y: top + i * ch + ch * 0.68, "text-anchor": "end", class: "t-axis" }, t);
+      srcs.forEach((src, j) => {
+        const v = rate(src, t);
+        const k = v ? Math.min(C.seq.length - 1, 1 + Math.floor((v / max) * (C.seq.length - 1.01))) : 0;
+        const r = el(s, "rect", { x: lab + j * cw + 1, y: top + i * ch + 1, width: cw - 2, height: ch - 2, rx: 2, fill: C.seq[k] });
+        this.hover(r, `<b>${esc(t)}</b> in S${project.sources.indexOf(src) + 1}<br>${v.toFixed(1)} per 1,000 words`);
+      });
+    });
+    body.appendChild(s);
+  }
+
+  moodBySource(project, srcs) {
+    const body = this.panel("Mood by source", "Average sentence tone in each source (Tone must have run on it).", true);
+    const items = srcs.map((src) => ({ src, mean: src.tone.totals.mean }));
+    const W = this.width(body), labelW = Math.min(240, W * 0.4), bh = 14, gap = 12;
+    const H = items.length * (bh + gap) + 24;
+    const s = svg(W, H);
+    const lim = Math.max(0.1, ...items.map((d) => Math.abs(d.mean)));
+    const half = (W - labelW - 50) / 2, zero = labelW + half;
+    el(s, "line", { x1: zero, x2: zero, y1: 0, y2: H - 18, stroke: C.base, "stroke-width": 1 });
+    el(s, "text", { x: zero - half, y: H - 4, class: "t-axis" }, "negative");
+    el(s, "text", { x: zero + half, y: H - 4, "text-anchor": "end", class: "t-axis" }, "positive");
+    items.forEach((d, i) => {
+      const y = 2 + i * (bh + gap);
+      const id = project.sources.indexOf(d.src) + 1;
+      el(s, "text", { x: 0, y: y + bh - 3, class: "t-label" }, `S${id} · ${d.src.model.title.length > 26 ? d.src.model.title.slice(0, 25) + "…" : d.src.model.title}`);
+      const len = (Math.abs(d.mean) / lim) * half;
+      el(s, "path", { d: d.mean >= 0 ? barPath(zero, y, len, bh) : barPathLeft(zero, y, len, bh), fill: d.mean >= 0 ? C.pos : C.neg });
+      el(s, "text", { x: d.mean >= 0 ? zero + len + 6 : zero - len - 6, y: y + bh - 3, "text-anchor": d.mean >= 0 ? "start" : "end", class: "t-value" }, (d.mean >= 0 ? "+" : "") + d.mean.toFixed(2));
+    });
+    body.appendChild(s);
   }
 
   tiles(state) {
