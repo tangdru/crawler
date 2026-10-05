@@ -365,7 +365,7 @@ async function loadBuffer(buf, name, ext, mime, text) {
     throw new Error(`.${ext} files use an older or Apple-only format that browsers can't read. Save it as .docx, .pptx, .xlsx or PDF and open that.`);
   }
   const t = text();
-  const bad = (t.match(/�/g) || []).length;
+  const bad = (t.match(/\uFFFD/g) || []).length;
   if (bad > t.length * 0.02) throw new Error(`This file type (.${ext || "unknown"}) isn't supported. Try PDF, Word, Excel, PowerPoint, EPUB, HTML or plain text.`);
   return fromText(t, name.replace(/\.\w+$/, ""));
 }
