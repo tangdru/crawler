@@ -4,657 +4,104 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Reference Crawler</title>
+<meta name="description" content="Watch a crawler read any document or web page: references, trends and tone, with summary charts and CSV export.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;600&family=Fraunces:opsz,wght@9..144,500&display=swap">
-<style>
-/* Layout: one reading column of a dark reference list; a fixed canvas overlay where the crawler walks; a slim control bar on top and a read-out bar at the bottom.
-   Single deliberate dark look (it is a terminal-lit document), so no light theme. */
-:root {
-  color-scheme: dark;
-  --bg: #08080c;
-  --ink: #c4c5d0;
-  --ink-dim: #6e7084;
-  --ink-faint: #34364a;
-  --link: #8487ee;
-  --panel: #111119;
-  --line: #23253a;
-  --magenta: #ff3fd8;
-  --cyan: #33e1ff;
-  --blue: #4f7dff;
-  --green: #46f08a;
-  --violet: #b07cff;
-  --amber: #ffb547;
-  --coral: #ff6b5e;
-  --f-display: "Fraunces", Georgia, "Times New Roman", serif;
-  --f-body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
-  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
-}
-[hidden] { display: none !important; }
-html, body { background: var(--bg); color: var(--ink); }
-body { margin: 0; font: 15px/1.6 var(--f-body); -webkit-font-smoothing: antialiased; }
-
-.bar {
-  position: fixed; inset: 0 0 auto 0; z-index: 20;
-  padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px 10px;
-  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(6px);
-  border-bottom: 1px solid var(--line);
-}
-.brand { font: 500 20px/1 var(--f-display); letter-spacing: .01em; color: #fff; margin-right: auto; }
-.brand small { font: 11px/1 var(--f-mono); color: var(--ink-dim); letter-spacing: .08em; text-transform: uppercase; margin-left: 8px; }
-.ctl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-button, select {
-  font: 12px/1 var(--f-mono); letter-spacing: .04em; color: var(--ink);
-  background: var(--panel); border: 1px solid var(--line); border-radius: 3px;
-  padding: 8px 10px; cursor: pointer;
-}
-button:hover, select:hover { border-color: var(--ink-dim); color: #fff; }
-button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
-button.primary { border-color: var(--magenta); color: #fff; }
-
-main { max-width: 68ch; margin: 0 auto; padding: 96px 16px 180px; }
-.note { font: 11px/1.5 var(--f-mono); color: var(--ink-dim); letter-spacing: .04em; text-transform: uppercase; border-left: 2px solid var(--ink-faint); padding-left: 10px; }
-#doc h1 { font: 500 34px/1.15 var(--f-display); color: #fff; margin: 18px 0 8px; text-wrap: balance; }
-#doc h2 { font: 500 22px/1.2 var(--f-display); color: #fff; margin: 34px 0 10px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
-#doc p { margin: 0 0 14px; }
-#doc ol { padding-left: 2.2em; margin: 0; font-size: 13.5px; line-height: 1.75; }
-#doc li { margin-bottom: 4px; }
-#doc li::marker { color: var(--ink-dim); font-family: var(--f-mono); font-size: 12px; }
-
-/* tokens */
-.w { transition: color .6s; }
-.w.read { color: #e8e8f0; }
-.e { color: var(--link); border-radius: 2px; transition: background .4s, color .4s, box-shadow .4s; }
-.e.t-title { font-style: italic; }
-.e.t-author, .e.t-date, .e.t-pages { color: inherit; }
-.e.hit { color: var(--c); box-shadow: 0 0 0 1px var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); }
-.e.hit.t-date, .e.hit.t-pages, .e.hit.t-author { background: transparent; }
-.t-doi { --c: var(--cyan); } .t-isbn { --c: var(--blue); } .t-pmid { --c: var(--green); }
-.t-bibcode { --c: var(--violet); } .t-url { --c: var(--link); } .t-title { --c: var(--magenta); }
-.t-author { --c: var(--amber); } .t-date { --c: var(--coral); } .t-pages { --c: var(--ink-dim); }
-
-#fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
-
-.hud {
-  position: fixed; inset: auto 0 0 0; z-index: 20;
-  padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 12px);
-  background: color-mix(in srgb, var(--panel) 92%, transparent);
-  backdrop-filter: blur(6px);
-  border-top: 1px solid var(--line);
-  font: 11px/1.4 var(--f-mono);
-  display: grid; gap: 8px;
-}
-.prog { height: 2px; background: var(--ink-faint); position: relative; overflow: hidden; }
-.prog i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--magenta); }
-.row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; min-width: 0; }
-.stat { color: var(--ink-dim); text-transform: uppercase; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
-.stat b { color: #fff; font-weight: 600; }
-.chip { display: inline-flex; gap: 6px; align-items: baseline; color: var(--c); letter-spacing: .06em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
-.chip::before { content: ""; width: 7px; height: 7px; background: var(--c); align-self: center; }
-.chip b { color: #fff; font-weight: 600; }
-.last { color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 200px; }
-.last span { color: var(--c); }
-
-.sheet {
-  position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 16px;
-  background: color-mix(in srgb, var(--bg) 80%, transparent);
-}
-.sheet .card { width: min(640px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 18px; display: grid; gap: 12px; }
-.sheet h3 { margin: 0; font: 500 20px/1.2 var(--f-display); color: #fff; }
-.sheet p { margin: 0; color: var(--ink-dim); font-size: 13px; }
-textarea {
-  width: 100%; box-sizing: border-box; min-height: 260px; resize: vertical;
-  background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 3px;
-  font: 13px/1.5 var(--f-mono); padding: 10px;
-}
-.sheet .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; align-items: center; }
-.sheet label.file { margin-right: auto; font: 12px/1 var(--f-mono); color: var(--ink-dim); cursor: pointer; }
-.sheet label.file input { display: none; }
-.sheet label.file:hover { color: #fff; }
-</style>
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
 <header class="bar">
-  <div class="brand">Reference Crawler <small>reading pass</small></div>
+  <div class="brand">Reference Crawler</div>
   <div class="ctl">
-    <button id="play" class="primary" type="button">Pause</button>
+    <button id="openBtn" class="primary" type="button">Open…</button>
+    <div class="seg" role="radiogroup" aria-label="Lens">
+      <button type="button" role="radio" data-lens="references" aria-checked="true">References</button>
+      <button type="button" role="radio" data-lens="trends" aria-checked="false">Trends</button>
+      <button type="button" role="radio" data-lens="tone" aria-checked="false">Tone</button>
+    </div>
+  </div>
+  <div class="ctl">
+    <button id="play" type="button">Pause</button>
     <select id="speed" aria-label="Reading speed">
-      <option value="0.5">0.5×</option>
-      <option value="1">1×</option>
-      <option value="2" selected>2×</option>
-      <option value="4">4×</option>
+      <option value="0.5">0.5×</option><option value="1">1×</option><option value="2" selected>2×</option>
+      <option value="4">4×</option><option value="8">8×</option><option value="16">16×</option>
     </select>
-    <button id="restart" type="button">Restart</button>
-    <button id="own" type="button">Use your text</button>
+    <button id="skip" type="button" title="Apply this lens to the whole document now">Finish now</button>
+    <div class="seg" role="tablist" aria-label="View">
+      <button type="button" role="tab" data-view="doc" aria-selected="true">Document</button>
+      <button type="button" role="tab" data-view="summary" aria-selected="false">Summary</button>
+    </div>
+    <div class="menu">
+      <button id="exportBtn" type="button" aria-haspopup="true" aria-expanded="false">Export CSV</button>
+      <div class="menu-list" id="exportMenu" hidden>
+        <button type="button" data-export="entities">entities.csv <span>every reference found</span></button>
+        <button type="button" data-export="sentences">sentences.csv <span>one row per sentence</span></button>
+        <button type="button" data-export="terms">terms.csv <span>needs a Trends crawl</span></button>
+        <button type="button" data-export="zip">All as .zip</button>
+      </div>
+    </div>
   </div>
 </header>
 
 <canvas id="fx" aria-hidden="true"></canvas>
 
-<main>
-  <div class="note" id="note">Sample document. The citations are illustrative, not real sources. Press “Use your text” to crawl something of your own.</div>
+<main id="docView">
+  <div class="docmeta" id="docMeta"></div>
   <article id="doc"></article>
 </main>
 
-<footer class="hud" aria-live="off">
+<section id="summaryView" class="summary" hidden></section>
+
+<footer class="hud" id="hud">
   <div class="prog"><i id="progBar"></i></div>
-  <div class="row">
-    <span class="stat">tokens <b id="sTok">0</b>/<span id="sTot">0</span></span>
-    <span class="stat">entities <b id="sEnt">0</b></span>
-    <span id="chips" class="row"></span>
-  </div>
-  <div class="row"><span class="last" id="last">waiting…</span></div>
+  <div class="row" id="hudStats"></div>
+  <div class="row"><span class="last" id="hudLine">Loading…</span></div>
 </footer>
 
 <div class="sheet" id="sheet" hidden>
-  <form class="card" id="ownForm">
-    <h3>Crawl your own text</h3>
-    <p>Paste a reference list, an article, or any plain text. The crawler picks out DOIs, ISBNs, PMIDs, Bibcodes, URLs, quoted titles, authors, dates and page ranges.</p>
-    <textarea id="ownText" placeholder="Paste text here…"></textarea>
-    <div class="actions">
-      <label class="file">Load a .txt file<input id="ownFile" type="file" accept=".txt,.md,text/plain"></label>
-      <button type="button" id="cancel">Cancel</button>
-      <button type="submit" class="primary">Crawl it</button>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="sheet-head">
+      <h3 id="sheetTitle">Open something to crawl</h3>
+      <button type="button" id="closeSheet" class="ghost" aria-label="Close">Close</button>
     </div>
-  </form>
+    <form id="urlForm" class="src">
+      <label for="urlIn">Web address</label>
+      <div class="inline">
+        <input id="urlIn" type="text" inputmode="url" placeholder="https://en.wikipedia.org/wiki/Spider" autocomplete="off">
+        <button type="submit" class="primary">Load page</button>
+      </div>
+      <p class="hint">Articles, papers, Wikipedia, blogs and PDFs at a link. Pages behind a login won't load; copy their text and paste it below.</p>
+    </form>
+    <div class="src">
+      <label for="fileIn">File</label>
+      <label class="drop" id="drop" for="fileIn">
+        <input id="fileIn" type="file" accept=".pdf,.docx,.xlsx,.xls,.ods,.csv,.tsv,.pptx,.odt,.odp,.epub,.rtf,.html,.htm,.md,.markdown,.txt,.json,text/*">
+        <b>Drop a file here</b> or click to choose one
+        <span class="hint">PDF, Word, Excel, PowerPoint, EPUB, OpenDocument, HTML, Markdown, text, CSV, JSON, RTF</span>
+      </label>
+    </div>
+    <form id="pasteForm" class="src">
+      <label for="pasteIn">Paste text</label>
+      <textarea id="pasteIn" placeholder="Paste an article, a reference list, notes… or a web address."></textarea>
+      <div class="inline end"><button type="submit" class="primary">Crawl this text</button></div>
+    </form>
+    <div class="src">
+      <span class="lab">Samples</span>
+      <div class="inline">
+        <button type="button" data-sample="references">Reference list</button>
+        <button type="button" data-sample="article">News article</button>
+      </div>
+    </div>
+    <p class="error" id="sheetError" role="alert" hidden></p>
+  </div>
 </div>
 
-<script>
-(() => {
-"use strict";
+<div class="busy" id="busy" hidden><div><span class="spin" aria-hidden="true"></span><span id="busyText">Loading…</span></div></div>
+<div class="toast" id="toast" role="status" hidden></div>
+<div class="tip" id="tip" hidden></div>
 
-/* ---------- sample document ---------- */
-const SAMPLE = {
-  title: "Spiders in human culture",
-  sections: [
-    { h: null, p: [
-      "Spiders have appeared in folklore, art and science for at least three thousand years. Weaving goddesses, trickster figures and omens of luck all draw on the same small animal, and the modern fear of spiders is among the most frequently studied phobias. Surveys published since 1990 put the share of adults reporting a strong fear of spiders at between 3 and 6 percent.",
-      "Scholarly interest spans entomology, psychology, classics and materials science. Spider silk in particular has attracted research since the 1990s, when work on recombinant silk proteins in plants and bacteria first appeared in journals such as \"Plant Biotechnology Journal\" and \"Biomacromolecules\". Accounts of the fossil record have grown as well: the oldest spider web preserved in amber was described in 2006, and Carboniferous arachnids continue to be reclassified."
-    ]},
-    { h: "References", list: [
-      "Hartwell, M. J. (2002). Weavers and Tricksters: Spiders in World Mythology. Lisbon: Coastline Academic Press. pp. 112–118. ISBN 978-0-19-874512-3.",
-      "Okafor, Adaeze (14 March 2007). \"The Spider Woman Cycle in Plains Storytelling\". Journal of Folklore Studies. 41 (2): 66–73. doi:10.3389/jfs.2007.41208. JSTOR 4412071.",
-      "Lindqvist, P.; Moreau, É. (1998). \"Fear of spiders in a general population sample\". Behaviour Research Quarterly. 36 (4): 389–96. doi:10.1016/S0005-7967(98)00024-1. PMID 9670601.",
-      "Brandt, Ingrid (9 June 2009). \"Spider fears or arachnophobia?\". phobias-research.org. Archived from the original on 25 June 2009. Retrieved 2 August 2009.",
-      "Varga, T. & Ellison, R. (2005). Cognitive Science: An Introduction to the Study of Mind. Thousand Oaks: Meridian Academic. pp. 244–246. ISBN 978-1-4129-2568-6.",
-      "Delacroix, G. C. L. (1994). \"The disgusting spider: disease, illness and the perpetuation of fear\". Society and Animals. 2 (1): 17–25. doi:10.1163/156853094X00045. PMC 3087214.",
-      "Ruiz-Montaño, Carla (2011). \"Silk proteins in transgenic tobacco leaves: accumulation and field production\". Plant Biotechnology Journal. 2 (5): 431–38. Bibcode:2004PBioJ...2..431M. doi:10.1111/j.1467-7652.2004.00087.x. PMID 17168889.",
-      "Asante, K.; Lowe, H. (2016). \"How informative are case studies of spider bites in the medical literature?\". Toxicon. 114: 40–44. Bibcode:2016Txcn..114...40S. doi:10.1016/j.toxicon.2016.02.023. PMID 26923161.",
-      "Nakashima, S. (2001). \"Misdiagnosis of brown recluse spider bite\". Western Journal of Medicine. 174 (4): 240. doi:10.1136/ewjm.174.4.240. PMC 1071344. PMID 11290673.",
-      "Petrov, V. (August 2022). \"The global spread of misinformation on spiders\". Current Biology. 32 (16): R871–R873. Bibcode:2022CBio...32.R871M. doi:10.1016/j.cub.2022.07.026. hdl:10400.3/6470. ISSN 0960-9822.",
-      "Whitcombe, Richard S.; Eklund, Geoffrey K. (2008). \"Medical aspects of spider bites\". Annual Review of Entomology. 53 (1): 409–29. doi:10.1146/annurev.ento.53.103106.093503. PMID 17877450.",
-      "Haddad, J. H. (1 August 2004). \"The global epidemiology, syndromic classification, management, and prevention of spider bites\". American Journal of Tropical Medicine and Hygiene. 71 (2): 239–50. doi:10.4269/ajtmh.2004.71.2.0700239. PMID 15306718.",
-      "Okonkwo, Elizabeth (2013). Aspects of Ekphrastic Technique in Ovid's Metamorphoses. Newcastle: Cambridge Scholars Publishing. p. 166. ISBN 978-1-4438-4271-6.",
-      "Fennimore, Eleanor Winsor (January 1974). \"Ekphrasis and the theme of artistic failure in Ovid's Metamorphoses\". Ramus. 3 (2): 102–142. doi:10.1017/S0048671X00004549.",
-      "Penney, D. & Selden, P. A. (2007). \"Spinning with the dinosaurs: the fossil record of spiders\". Geology Today. 23 (6): 231–37. Bibcode:2007GeolT..23..231P. doi:10.1111/j.1365-2451.2007.00641.x.",
-      "Gwynne, R. (2006). \"Oldest spider web found in amber\". https://news.example.org/science/5144694.stm. Retrieved 15 October 2009.",
-      "Dunlop, J. A. (1999). \"A replacement name for the trigonotarbid arachnid from the Upper Silurian of Shropshire\". Palaeontology. 42 (1): 191. Bibcode:1999Palgy..42..191D. doi:10.1111/1475-4983.00068.",
-      "Krantz, G. W. & Walter, D. E. (2009). A Manual of Acarology. Lubbock: Texas Tech University Press. p. 98. ISBN 978-0-89672-620-8.",
-      "Vollrath, F. & Selden, P. A. (2007). \"The role of behavior in the evolution of spiders, silks, and webs\". Annual Review of Ecology, Evolution, and Systematics. 38 (1): 819–46. Bibcode:2007AREES..38..819V. doi:10.1146/annurev.ecolsys.37.091305.110221.",
-      "Selden, P. A.; Shih, ChungKun; Ren, Dong (2011). \"A golden orb-weaver spider from the Middle Jurassic of China\". Biology Letters. 7 (5): 775–78. doi:10.1098/rsbl.2011.0228. PMC 3169061. PMID 21508021.",
-      "Mammola, S.; Malumbres-Olarte, J.; Arabesky, V. (2022). \"The global spread of misinformation on spiders\". Current Biology. 32 (16): R871–R873. doi:10.1016/j.cub.2022.07.026. PMID 35998593.",
-      "Lozano-Fernandez, Jesús; Tanner, Alastair R. (2019). \"Increasing species sampling in chelicerate genomic-scale datasets\". Frontiers in Genetics. 11: 182. doi:10.3389/fgene.2020.00182. PMID 32218802."
-    ]}
-  ]
-};
-
-/* ---------- entity grammar ---------- */
-const TYPES = {
-  doi:     { label: "DOI",     color: "#33e1ff", fx: "callout" },
-  isbn:    { label: "ISBN",    color: "#4f7dff", fx: "callout" },
-  pmid:    { label: "PMID",    color: "#46f08a", fx: "callout" },
-  bibcode: { label: "Bibcode", color: "#b07cff", fx: "callout" },
-  url:     { label: "URL",     color: "#8487ee", fx: "callout" },
-  title:   { label: "Title",   color: "#ff3fd8", fx: "bar" },
-  author:  { label: "Author",  color: "#ffb547", fx: "tag" },
-  date:    { label: "Date",    color: "#ff6b5e", fx: "tag" },
-  pages:   { label: "Pages",   color: "#9aa0b4", fx: "tag" }
-};
-const MONTHS = "January|February|March|April|May|June|July|August|September|October|November|December";
-const RULES = [
-  ["doi",     String.raw`(?:doi:\s?)?\b10\.\d{4,9}\/[^\s"]*[^\s".,;)]`],
-  ["isbn",    String.raw`\bISBN(?:-1[03])?:?\s?(?:97[89][-–\s]?)?\d[\d\-–\s]{7,14}[\dX]\b`],
-  ["pmid",    String.raw`\b(?:PMID|PMC|ISSN|JSTOR|hdl)[:\s]\s?[\w./-]*\d[\w./-]*\d`],
-  ["bibcode", String.raw`\bBibcode:\s?\S+[^\s.]`],
-  ["url",     String.raw`\bhttps?:\/\/[^\s<>"]+[^\s<>".,;)]|\b[\w-]+(?:\.[\w-]+)*\.(?:com|org|net|edu|gov|io)\b`],
-  ["title",   String.raw`"[^"\n]{4,180}"|“[^”\n]{4,180}”`],
-  ["author",  String.raw`\b[A-Z][\p{L}’'-]+,\s(?:[A-Z]\.\s?){1,3}(?=[\s;,&(]|$)|\b[A-Z][\p{L}’'-]+,\s[A-Z][\p{L}]+(?:\s[A-Z][\p{L}]+)?(?=\s\(|;|\s&)`],
-  ["date",    String.raw`\b(?:\d{1,2}\s)?(?:${MONTHS})\s\d{4}\b|\b(?:1[5-9]|20)\d{2}s?\b`],
-  ["pages",   String.raw`\bpp?\.\s?[A-Z]?\d+(?:[–-][A-Z]?\d+)?`]
-];
-const ENTITY_RE = new RegExp(RULES.map(([k, r]) => `(?<${k}>${r})`).join("|"), "gu");
-
-/* ---------- DOM build ---------- */
-const docEl = document.getElementById("doc");
-const tokens = [];
-
-function tokenize(text, parent) {
-  ENTITY_RE.lastIndex = 0;
-  let pos = 0, m;
-  const pushWords = (s) => {
-    for (const part of s.split(/(\s+)/)) {
-      if (!part) continue;
-      if (/^\s+$/.test(part)) { parent.appendChild(document.createTextNode(part)); continue; }
-      const sp = document.createElement("span");
-      sp.className = "w"; sp.textContent = part;
-      parent.appendChild(sp);
-      tokens.push({ el: sp, type: null, text: part });
-    }
-  };
-  while ((m = ENTITY_RE.exec(text))) {
-    if (!m[0]) { ENTITY_RE.lastIndex++; continue; }
-    const type = Object.keys(m.groups).find((k) => m.groups[k] !== undefined);
-    pushWords(text.slice(pos, m.index));
-    const sp = document.createElement("span");
-    sp.className = "e t-" + type; sp.textContent = m[0];
-    parent.appendChild(sp);
-    tokens.push({ el: sp, type, text: m[0] });
-    pos = m.index + m[0].length;
-  }
-  pushWords(text.slice(pos));
-}
-
-function buildFromSample() {
-  docEl.textContent = "";
-  tokens.length = 0;
-  const h1 = document.createElement("h1"); tokenize(SAMPLE.title, h1); docEl.appendChild(h1);
-  for (const s of SAMPLE.sections) {
-    if (s.h) { const h = document.createElement("h2"); tokenize(s.h, h); docEl.appendChild(h); }
-    for (const p of s.p || []) { const el = document.createElement("p"); tokenize(p, el); docEl.appendChild(el); }
-    if (s.list) {
-      const ol = document.createElement("ol");
-      for (const item of s.list) { const li = document.createElement("li"); tokenize(item, li); ol.appendChild(li); }
-      docEl.appendChild(ol);
-    }
-  }
-}
-
-function buildFromText(raw) {
-  docEl.textContent = "";
-  tokens.length = 0;
-  const blocks = raw.replace(/\r/g, "").split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
-  for (const b of blocks) {
-    const lines = b.split("\n");
-    // A block of many short lines reads as a list; keep each line on its own.
-    if (lines.length > 2) {
-      const ol = document.createElement("ol"); ol.style.listStyle = "none"; ol.style.paddingLeft = "0";
-      for (const ln of lines) { const li = document.createElement("li"); tokenize(ln.trim(), li); ol.appendChild(li); }
-      docEl.appendChild(ol);
-    } else {
-      const p = document.createElement("p"); tokenize(lines.join(" "), p); docEl.appendChild(p);
-    }
-  }
-}
-
-/* ---------- geometry ---------- */
-let lineIndex = []; // tokens sorted by y for neighbour lookups
-function measure() {
-  const sy = window.scrollY, sx = window.scrollX;
-  for (const t of tokens) {
-    const r = t.el.getClientRects()[0] || t.el.getBoundingClientRect();
-    t.x = r.left + sx; t.y = r.top + sy; t.w = r.width; t.h = r.height;
-    t.cx = t.x + t.w / 2; t.cy = t.y + t.h / 2;
-  }
-  lineIndex = tokens.slice().sort((a, b) => a.cy - b.cy);
-}
-function nearTokens(y, range) {
-  let lo = 0, hi = lineIndex.length;
-  while (lo < hi) { const mid = (lo + hi) >> 1; if (lineIndex[mid].cy < y - range) lo = mid + 1; else hi = mid; }
-  const out = [];
-  for (let i = lo; i < lineIndex.length && lineIndex[i].cy <= y + range; i++) out.push(lineIndex[i]);
-  return out;
-}
-
-/* ---------- canvas ---------- */
-const cv = document.getElementById("fx");
-const ctx = cv.getContext("2d");
-let W = 0, H = 0, DPR = 1;
-function resize() {
-  DPR = Math.min(window.devicePixelRatio || 1, 2);
-  W = window.innerWidth; H = window.innerHeight;
-  cv.width = W * DPR; cv.height = H * DPR;
-  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  measure();
-}
-
-/* ---------- state ---------- */
-const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-let playing = !reduceMotion;
-let speed = 2;
-let idx = 0, dwell = 0;
-let gaze = { x: 0, y: 0 };
-const body = { x: 0, y: 0, vx: 0, vy: 0 };
-const effects = [];
-const hits = [];
-const counts = {};
-let entityTotal = 0;
-
-const LEG_ANGLES = [-160, -125, -60, -25, 25, 60, 125, 160].map((d) => d * Math.PI / 180);
-let legs = [];
-function resetLegs() {
-  legs = LEG_ANGLES.map((a, i) => ({
-    a, r: 62 + (i % 3) * 14, group: i % 2,
-    fx: body.x + Math.cos(a) * 60, fy: body.y + Math.sin(a) * 60,
-    sx: 0, sy: 0, tx: 0, ty: 0, t: 1, grab: null
-  }));
-}
-
-function reset() {
-  idx = 0; dwell = 0; effects.length = 0; hits.length = 0; entityTotal = 0;
-  for (const k in counts) delete counts[k];
-  for (const t of tokens) t.el.classList.remove("read", "hit");
-  window.scrollTo(0, 0);
-  measure();
-  const first = tokens[0];
-  if (first) { gaze.x = first.cx; gaze.y = first.cy; body.x = first.cx - 40; body.y = first.cy + 30; }
-  resetLegs();
-  document.getElementById("sTot").textContent = tokens.length;
-  updateHud(null);
-}
-
-/* ---------- reading ---------- */
-function dwellFor(t) {
-  if (t.type) return TYPES[t.type].fx === "tag" ? 0.22 : 0.62;
-  return 0.02 + Math.min(t.text.length, 12) * 0.006;
-}
-
-function fire(t) {
-  const spec = TYPES[t.type];
-  t.el.classList.add("hit");
-  counts[t.type] = (counts[t.type] || 0) + 1;
-  entityTotal++;
-  const now = performance.now();
-  hits.push({ x: t.cx, y: t.cy, born: now, color: spec.color });
-  if (hits.length > 40) hits.shift();
-  effects.push({ kind: spec.fx, t, born: now, life: spec.fx === "callout" ? 2600 : spec.fx === "bar" ? 1500 : 1100,
-    angle: (Math.random() - 0.5) * (spec.fx === "bar" ? 0.9 : 0.12),
-    dx: 14 + Math.random() * 30, dy: -34 - Math.random() * 30 });
-  if (spec.fx === "callout" && Math.random() < 0.35 && !reduceMotion) {
-    effects.push({ kind: "bar", t, born: now + 120, life: 900, angle: (Math.random() - 0.5) * 1.1, dx: 0, dy: 0, ghost: true });
-  }
-  // nearest free leg reaches out and grabs the entity
-  let best = null, bd = Infinity;
-  for (const L of legs) { const d = Math.hypot(L.fx - t.cx, L.fy - t.cy); if (d < bd) { bd = d; best = L; } }
-  if (best && bd < 260) stepLeg(best, t.cx, t.cy, t);
-  updateHud(t);
-}
-
-function advance(dt) {
-  if (idx >= tokens.length) return;
-  dwell -= dt * speed;
-  while (dwell <= 0 && idx < tokens.length) {
-    const t = tokens[idx];
-    gaze.x = t.cx; gaze.y = t.cy;
-    if (t.type) fire(t); else t.el.classList.add("read");
-    dwell += dwellFor(t);
-    idx++;
-    if (t.type) break;
-  }
-  if (idx >= tokens.length) updateHud(null, true);
-}
-
-/* ---------- body & legs ---------- */
-function stepLeg(L, x, y, grab) {
-  L.sx = L.fx; L.sy = L.fy; L.tx = x; L.ty = y; L.t = 0; L.grab = grab || null;
-}
-function updateBody(dt) {
-  // spring the body toward a point just behind and below the gaze
-  const tx = gaze.x - 18, ty = gaze.y + 26;
-  const k = 9 * Math.min(speed, 3), damp = 0.82;
-  body.vx = (body.vx + (tx - body.x) * k * dt) * damp;
-  body.vy = (body.vy + (ty - body.y) * k * dt) * damp;
-  body.x += body.vx; body.y += body.vy;
-
-  const moving = legs.filter((L) => L.t < 1).length;
-  for (const L of legs) {
-    if (L.t < 1) { L.t = Math.min(1, L.t + dt * (5 + speed * 2)); }
-    const ix = body.x + Math.cos(L.a) * L.r + body.vx * 6;
-    const iy = body.y + Math.sin(L.a) * L.r * 0.8 + body.vy * 6;
-    const far = Math.hypot(L.fx - ix, L.fy - iy);
-    if (L.t >= 1 && far > 46 && moving < 3) {
-      // plant the foot on a nearby word, preferring entities
-      let best = null, score = Infinity;
-      for (const t of nearTokens(iy, 70)) {
-        const d = Math.hypot(t.cx - ix, t.cy - iy);
-        if (d > 80) continue;
-        const s = d - (t.type ? 35 : 0) + Math.random() * 10;
-        if (s < score) { score = s; best = t; }
-      }
-      if (best) stepLeg(L, best.x + Math.random() * best.w, best.cy, best.type ? best : null);
-      else stepLeg(L, ix, iy, null);
-    }
-    if (L.t < 1) {
-      const e = L.t < 0.5 ? 2 * L.t * L.t : 1 - Math.pow(-2 * L.t + 2, 2) / 2;
-      L.fx = L.sx + (L.tx - L.sx) * e;
-      L.fy = L.sy + (L.ty - L.sy) * e - Math.sin(L.t * Math.PI) * 14;
-    }
-  }
-}
-
-/* ---------- drawing ---------- */
-const MONO = '600 15px "IBM Plex Mono", ui-monospace, Menlo, monospace';
-function sy(y) { return y - window.scrollY; }
-
-function drawHits(now) {
-  ctx.lineWidth = 1;
-  for (let i = 1; i < hits.length; i++) {
-    const a = hits[i - 1], b = hits[i];
-    const age = (now - b.born) / 5000;
-    if (age > 1) continue;
-    ctx.strokeStyle = `rgba(132,135,238,${0.45 * (1 - age)})`;
-    ctx.beginPath(); ctx.moveTo(a.x, sy(a.y)); ctx.lineTo(b.x, sy(b.y)); ctx.stroke();
-  }
-  for (const h of hits) {
-    const age = (now - h.born) / 4000;
-    if (age > 1) continue;
-    ctx.strokeStyle = h.color; ctx.globalAlpha = 0.5 * (1 - age);
-    ctx.beginPath(); ctx.moveTo(body.x, sy(body.y)); ctx.lineTo(h.x, sy(h.y)); ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-}
-
-function drawSpider(now) {
-  const bx = body.x, by = sy(body.y);
-  for (const L of legs) {
-    const fx = L.fx, fy = sy(L.fy);
-    const mx = (bx + fx) / 2, my = (by + fy) / 2;
-    const dx = fx - bx, dy = fy - by, len = Math.hypot(dx, dy) || 1;
-    const side = Math.cos(L.a) < 0 ? -1 : 1;
-    const kx = mx + (-dy / len) * 22 * side, ky = my - Math.abs(dx / len) * 18 - 8;
-    ctx.strokeStyle = L.grab ? TYPES[L.grab.type].color : "#ff5c8a";
-    ctx.lineWidth = 1.2;
-    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(kx, ky); ctx.lineTo(fx, fy); ctx.stroke();
-    ctx.fillStyle = "#62ffd0";
-    ctx.beginPath(); ctx.arc(kx, ky, 2.4, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = L.grab ? TYPES[L.grab.type].color : "#33e1ff";
-    ctx.beginPath(); ctx.arc(fx, fy, 2.8, 0, Math.PI * 2); ctx.fill();
-  }
-  // body: a small jittering cluster of nodes, drawn as a graph
-  const nodes = [];
-  for (let i = 0; i < 6; i++) {
-    const a = i / 6 * Math.PI * 2 + now / 900;
-    const r = 7 + Math.sin(now / 230 + i * 1.7) * 3;
-    nodes.push([bx + Math.cos(a) * r * 1.3, by + Math.sin(a) * r]);
-  }
-  ctx.strokeStyle = "rgba(79,125,255,.9)"; ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j += 2) {
-    ctx.moveTo(nodes[i][0], nodes[i][1]); ctx.lineTo(nodes[j][0], nodes[j][1]);
-  }
-  ctx.stroke();
-  ctx.fillStyle = "#ff3fd8";
-  ctx.fillRect(bx - 4, by - 4, 8, 8);
-  ctx.strokeStyle = "#fff"; ctx.strokeRect(bx - 6.5, by - 6.5, 13, 13);
-  ctx.fillStyle = "#62ffd0";
-  for (const [x, y] of nodes) { ctx.beginPath(); ctx.arc(x, y, 1.8, 0, Math.PI * 2); ctx.fill(); }
-
-  // reading cursor at the gaze point
-  ctx.fillStyle = "rgba(255,255,255,.85)";
-  ctx.fillRect(gaze.x - 1, sy(gaze.y) - 9, 1.5, 18);
-}
-
-function fitText(s, max) { return s.length > max ? s.slice(0, max - 1) + "…" : s; }
-
-function drawEffects(now) {
-  for (let i = effects.length - 1; i >= 0; i--) {
-    const e = effects[i];
-    const age = now - e.born;
-    if (age < 0) continue;
-    if (age > e.life) { effects.splice(i, 1); continue; }
-    const p = age / e.life;
-    const fade = p > 0.7 ? 1 - (p - 0.7) / 0.3 : 1;
-    const spec = TYPES[e.t.type];
-    const x = e.t.x, y = sy(e.t.y);
-    ctx.save();
-    if (e.kind === "callout") {
-      const big = Math.min(30, Math.max(20, W / 26));
-      ctx.font = `600 ${big}px "IBM Plex Mono", ui-monospace, Menlo, monospace`;
-      const text = fitText(e.t.text.replace(/^(doi:|ISBN:?|PMID:?|PMC|Bibcode:)\s?/i, ""), 28);
-      const tw = ctx.measureText(text).width;
-      let cx = Math.min(x + e.dx, W - tw - 16); cx = Math.max(12, cx);
-      const cy = y + e.dy;
-      ctx.globalAlpha = fade;
-      // connector
-      ctx.strokeStyle = spec.color; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(cx, cy + 6); ctx.stroke();
-      // backdrop
-      ctx.fillStyle = "rgba(8,8,12,.82)";
-      ctx.fillRect(cx - 6, cy - big + 2, tw + 12, big + 10);
-      // smear ghost
-      if (!reduceMotion && p < 0.4) {
-        ctx.save(); ctx.globalAlpha = 0.25 * (1 - p / 0.4);
-        ctx.translate(cx, cy); ctx.scale(1 + (1 - p / 0.4) * 2.2, 1);
-        ctx.fillStyle = spec.color; ctx.fillText(text, 0, 0);
-        ctx.restore(); ctx.globalAlpha = fade;
-      }
-      ctx.fillStyle = spec.color; ctx.fillText(text, cx, cy);
-      ctx.font = '600 10px "IBM Plex Mono", ui-monospace, monospace';
-      ctx.fillStyle = "#08080c";
-      const lw = ctx.measureText(spec.label.toUpperCase()).width + 8;
-      ctx.fillStyle = spec.color; ctx.fillRect(cx - 6, cy - big - 12, lw, 14);
-      ctx.fillStyle = "#08080c"; ctx.fillText(spec.label.toUpperCase(), cx - 2, cy - big - 1);
-    } else if (e.kind === "bar") {
-      const flick = reduceMotion ? 0 : (Math.random() < 0.15 ? (Math.random() - 0.5) * 12 : 0);
-      ctx.translate(x + flick, y + e.t.h / 2);
-      ctx.rotate(e.angle);
-      ctx.font = MONO;
-      const text = fitText(e.t.text, 46);
-      const tw = ctx.measureText(text).width;
-      const bw = Math.max(tw + 24, 160) * (reduceMotion ? 1 : Math.min(1, p * 6));
-      ctx.globalAlpha = fade * (e.ghost ? 0.55 : 0.92);
-      ctx.fillStyle = "#ff3fd8";
-      ctx.fillRect(-10, -13, bw, 26);
-      ctx.save(); ctx.beginPath(); ctx.rect(-10, -13, bw, 26); ctx.clip();
-      ctx.fillStyle = "#14001a"; ctx.fillText(text, 2, 5);
-      ctx.restore();
-      if (!reduceMotion && Math.random() < 0.3) {
-        ctx.fillStyle = "rgba(51,225,255,.6)";
-        ctx.fillRect(-10 + Math.random() * bw * 0.8, -13, 20 + Math.random() * 60, 3);
-      }
-    } else {
-      // tag: brief outline pulse and a small label
-      ctx.globalAlpha = fade;
-      ctx.strokeStyle = spec.color; ctx.lineWidth = 1;
-      const pad = 3 + (1 - p) * 5;
-      ctx.strokeRect(x - pad, y - pad, e.t.w + pad * 2, e.t.h + pad * 2);
-      ctx.font = '600 9px "IBM Plex Mono", ui-monospace, monospace';
-      ctx.fillStyle = spec.color;
-      ctx.fillText(spec.label.toUpperCase(), x - pad, y - pad - 3);
-    }
-    ctx.restore();
-  }
-}
-
-/* ---------- HUD ---------- */
-const sTok = document.getElementById("sTok"), sEnt = document.getElementById("sEnt");
-const chipsEl = document.getElementById("chips"), lastEl = document.getElementById("last");
-const progBar = document.getElementById("progBar");
-function updateHud(t, done) {
-  sTok.textContent = idx; sEnt.textContent = entityTotal;
-  progBar.style.width = (tokens.length ? (idx / tokens.length) * 100 : 0) + "%";
-  chipsEl.textContent = "";
-  for (const k of Object.keys(TYPES)) {
-    if (!counts[k]) continue;
-    const c = document.createElement("span");
-    c.className = "chip t-" + k;
-    c.innerHTML = `${TYPES[k].label} <b>${counts[k]}</b>`;
-    chipsEl.appendChild(c);
-  }
-  if (done) { lastEl.textContent = `Finished. Read ${tokens.length} tokens and extracted ${entityTotal} entities. Press Restart to crawl again.`; return; }
-  if (t) {
-    lastEl.textContent = "extracted → ";
-    const s = document.createElement("span"); s.className = "t-" + t.type;
-    s.textContent = `${TYPES[t.type].label}: ${t.text}`;
-    lastEl.appendChild(s);
-  } else if (!idx) lastEl.textContent = playing ? "starting…" : "paused. Press Play to start the reading pass.";
-}
-
-/* ---------- loop ---------- */
-let lastT = performance.now();
-let userScrollUntil = 0;
-function frame(now) {
-  const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
-  if (playing) advance(dt);
-  updateBody(dt);
-  if (playing && now > userScrollUntil) {
-    const target = body.y - H * 0.5;
-    const cur = window.scrollY;
-    const next = cur + (target - cur) * Math.min(1, dt * 3);
-    if (Math.abs(next - cur) > 0.5) window.scrollTo(0, Math.max(0, next));
-  }
-  ctx.clearRect(0, 0, W, H);
-  drawHits(now);
-  drawEffects(now);
-  drawSpider(now);
-  if (playing && idx < tokens.length && now % 250 < 20) updateHud(null);
-  requestAnimationFrame(frame);
-}
-
-/* ---------- controls ---------- */
-const playBtn = document.getElementById("play");
-function setPlaying(v) {
-  playing = v; playBtn.textContent = v ? "Pause" : "Play";
-  if (v && idx >= tokens.length) reset();
-}
-playBtn.addEventListener("click", () => setPlaying(!playing));
-document.getElementById("speed").addEventListener("change", (e) => { speed = parseFloat(e.target.value); });
-document.getElementById("restart").addEventListener("click", () => { reset(); setPlaying(true); });
-window.addEventListener("keydown", (e) => {
-  if (e.target.closest("textarea, select, input")) return;
-  if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
-});
-for (const ev of ["wheel", "touchmove"]) window.addEventListener(ev, () => { userScrollUntil = performance.now() + 2500; }, { passive: true });
-
-const sheet = document.getElementById("sheet"), ownText = document.getElementById("ownText");
-document.getElementById("own").addEventListener("click", () => { sheet.hidden = false; setPlaying(false); ownText.focus(); });
-document.getElementById("cancel").addEventListener("click", () => { sheet.hidden = true; });
-document.getElementById("ownFile").addEventListener("change", (e) => {
-  const f = e.target.files[0]; if (!f) return;
-  const r = new FileReader(); r.onload = () => { ownText.value = r.result; }; r.readAsText(f);
-});
-document.getElementById("ownForm").addEventListener("submit", (e) => {
-  e.preventDefault();
-  const v = ownText.value.trim();
-  if (!v) { ownText.placeholder = "Paste some text first, then press Crawl it."; ownText.focus(); return; }
-  buildFromText(v);
-  document.getElementById("note").textContent = "Your text. Press Restart to crawl it again.";
-  sheet.hidden = true;
-  reset(); setPlaying(true);
-});
-
-window.addEventListener("resize", resize);
-
-/* ---------- boot ---------- */
-buildFromSample();
-resize();
-reset();
-playBtn.textContent = playing ? "Pause" : "Play";
-(document.fonts ? document.fonts.ready : Promise.resolve()).then(() => measure());
-requestAnimationFrame(frame);
-})();
-</script>
+<script type="module" src="src/app.js"></script>
 </body>
 </html>
