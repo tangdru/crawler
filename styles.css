@@ -272,3 +272,5 @@ textarea.short { min-height: 70px; }
 .stance.supports { border-color: #3987e5; } .stance.contradicts { border-color: #e66767; }
 .t-dark { fill: #0b0b0b; font: 600 12px var(--f-body); }
 td.num { font-variant-numeric: tabular-nums; text-align: right; }
+.hint.warn { color: var(--amber); }
+.hint a { color: var(--ink-hi); }

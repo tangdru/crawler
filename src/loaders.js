@@ -370,6 +370,10 @@ async function loadBuffer(buf, name, ext, mime, text) {
   return fromText(t, name.replace(/\.\w+$/, ""));
 }
 
+// True when the page is not on its own site (for example inside a claude.ai artifact),
+// where requests to other servers are blocked.
+export const sandboxed = () => !/^(tangdru\.github\.io|localhost|127\.0\.0\.1)$/.test(location.hostname);
+
 export async function loadUrl(input) {
   let url = input.trim();
   if (!/^https?:\/\//i.test(url)) url = "https://" + url;
@@ -380,7 +384,9 @@ export async function loadUrl(input) {
       headers: { Authorization: `Bearer ${SUPABASE_ANON_KEY}`, apikey: SUPABASE_ANON_KEY }
     });
   } catch {
-    throw new Error("Couldn't reach the page fetcher. Web addresses only load from the app's own site (tangdru.github.io/crawler); here you can paste text or open a file.");
+    throw new Error(sandboxed()
+      ? "This copy of the app runs inside claude.ai, which blocks requests to other websites, so web addresses can't load here. Open https://tangdru.github.io/crawler/ to load them, or paste the page's text below."
+      : "Couldn't reach the page fetcher. Check your connection and try again.");
   }
   if (!res.ok) {
     let msg = `The page couldn't be loaded (error ${res.status}).`;

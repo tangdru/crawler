@@ -6,7 +6,7 @@ import { analyzeTrends } from "./trends.js";
 import { analyzeTone } from "./tone.js";
 import { Crawler } from "./crawler.js";
 import { Summary } from "./summary.js";
-import { loadFile, loadUrl, fromText } from "./loaders.js";
+import { loadFile, loadUrl, fromText, sandboxed } from "./loaders.js";
 import { SAMPLES, SAMPLE_PROJECTS } from "./samples.js";
 import { ENTITY_TYPES } from "./references.js";
 import { entitiesCsv, sentencesCsv, termsCsv, themesCsv, zipAll, saveFile, slug } from "./export.js";
@@ -133,7 +133,14 @@ async function withBusy(text, fn) {
 }
 
 function sheetError(msg) { const e = $("sheetError"); e.textContent = msg || ""; e.hidden = !msg; }
-function openSheet() { setPlaying(false); sheetError(""); $("sheet").hidden = false; $("urlIn").focus(); }
+function openSheet() {
+  setPlaying(false); sheetError(""); $("sheet").hidden = false;
+  if (sandboxed()) {
+    $("urlHint").innerHTML = 'Web addresses only load on the app\'s own site: <a href="https://tangdru.github.io/crawler/" target="_blank" rel="noopener">tangdru.github.io/crawler</a>. This copy runs inside claude.ai, which blocks requests to other websites. Here you can open files or paste text.';
+    $("urlHint").classList.add("warn");
+  }
+  $("urlIn").focus();
+}
 
 async function openFrom(kind, value) {
   sheetError("");
@@ -228,7 +235,9 @@ async function openThemesSheet() {
   if (!ready.ready) {
     $("themesError").textContent = ready.reason === "no_key"
       ? "Theme finding isn't set up: the Supabase project has no Anthropic API key."
-      : "Can't reach the theme service from here. Themes work on the app's own site, tangdru.github.io/crawler.";
+      : sandboxed()
+        ? "Themes need the app's own site, https://tangdru.github.io/crawler/. This copy runs inside claude.ai, which blocks requests to other websites."
+        : "Can't reach the theme service. Check your connection and try again.";
     $("themesError").hidden = false;
     $("themesRun").disabled = true;
   }
