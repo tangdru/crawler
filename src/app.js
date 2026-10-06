@@ -25,7 +25,7 @@ const LENS_TEXT = {
 const LENS_ACCENT = { references: "#ff3fd8", trends: "#33e1ff", tone: "#ffd84d", themes: "#46f08a", scan: "#46f08a" };
 
 const project = { sources: [], active: 0, themes: null, question: "" };
-const ui = { lens: "references", view: "doc", themeRun: null };
+const ui = { lens: "trends", view: "doc", themeRun: null };
 const newKey = () => Math.random().toString(36).slice(2, 10);
 
 const crawler = new Crawler({
@@ -89,7 +89,7 @@ function showSource(i, { autoplay = true, lens } = {}) {
   crawler.load(src.model, analysesFor(src));
   (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => crawler.measure());
   let l = lens || ui.lens;
-  if (l === "themes" && !project.themes) l = "references";
+  if (l === "themes" && !project.themes) l = "trends";
   startLens(l, autoplay);
 }
 
@@ -103,7 +103,7 @@ function renderSourceBar() {
   project.sources.forEach((src, i) => {
     const chip = document.createElement("div");
     chip.className = "src-chip" + (i === project.active ? " on" : "");
-    const lensDots = ["references", "trends", "tone"].filter((l) => src.ran[l]).map((l) => `<i class="ld ${l}" title="${l} has run"></i>`).join("");
+    const lensDots = ["trends", "tone", "references"].filter((l) => src.ran[l]).map((l) => `<i class="ld ${l}" title="${l} has run"></i>`).join("");
     chip.innerHTML = `<button type="button" class="pick" title="${esc(src.model.title)}"><b>S${i + 1}</b> ${esc(src.model.title.length > 34 ? src.model.title.slice(0, 33) + "…" : src.model.title)} ${lensDots}</button><button type="button" class="rm" aria-label="Remove ${esc(src.model.title)}">×</button>`;
     chip.querySelector(".pick").addEventListener("click", () => { if (i !== project.active) showSource(i); });
     chip.querySelector(".rm").addEventListener("click", () => removeSource(i));
@@ -285,7 +285,7 @@ async function runThemes() {
   } catch (err) {
     ui.themeRun = null;
     console.error(err);
-    startLens("references", false);
+    startLens("trends", false);
     $("themesError").textContent = err.message || String(err);
     $("themesError").hidden = false;
     $("themesSheet").hidden = false;
@@ -506,10 +506,10 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") { $("sheet").hidden = true; $("themesSheet").hidden = true; exportMenu.hidden = true; return; }
   if (!$("sheet").hidden || !$("themesSheet").hidden) return;
   if (e.code === "Space") { e.preventDefault(); setView("doc"); setPlaying(!crawler.playing); }
-  else if (e.key === "1") chooseLens("references");
-  else if (e.key === "2") chooseLens("trends");
-  else if (e.key === "3") chooseLens("tone");
-  else if (e.key === "4") chooseLens("themes");
+  else if (e.key === "1") chooseLens("trends");
+  else if (e.key === "2") chooseLens("tone");
+  else if (e.key === "3") chooseLens("themes");
+  else if (e.key === "4") chooseLens("references");
 });
 let resizeTimer = 0;
 window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (ui.view === "summary" && project.sources.length) summary.render(project); }, 200); });

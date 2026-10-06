@@ -115,19 +115,19 @@ export class Summary {
     if (project.themes) this.themesSection(project);
     if (n > 1 && anySource) this.sourcesSection(project);
 
-    const lensNames = ["references", "trends", "tone"].filter((l) => ran[l]).map((l) => l[0].toUpperCase() + l.slice(1));
+    const lensNames = ["trends", "tone", "references"].filter((l) => ran[l]).map((l) => l[0].toUpperCase() + l.slice(1));
     this.section(n > 1 ? `This source: ${model.title}` : model.title,
       any ? `Built from: ${lensNames.join(" + ")}. ${!ran.trends || !ran.tone ? "Run the other lenses on this source to add more panels." : "Trends and Tone have both run, so the combined panels are shown too."}`
           : "No lens has run on this source yet. Pick one and press Play.");
     if (!any) return;
     this.tiles(view);
     this.root.appendChild(this.grid); // keep tiles above this source's panels
-    this.entityBars(view);
-    this.yearColumns(view);
     if (ran.trends) { this.keywords(view); this.termTrends(view); this.topicStrip(view); this.cooc(view); }
     if (ran.tone) { this.moodLine(view); this.emotionHeat(view); this.hedgeLines(view); this.uncited(view); }
     if (ran.trends && ran.tone) this.moodByTopic(view);
     this.quotes(view);
+    this.entityBars(view);
+    this.yearColumns(view);
     this.entityTable(view);
   }
 
