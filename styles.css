@@ -188,7 +188,7 @@ tbody tr:hover { background: var(--panel-2); }
 .inline { display: flex; gap: 8px; flex-wrap: wrap; }
 .inline.end { justify-content: flex-end; }
 .inline input { flex: 1 1 220px; min-width: 0; }
-input[type="text"], textarea {
+input[type="text"], input[type="url"], textarea {
   background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 3px; padding: 9px 10px; font: 13px/1.4 var(--f-mono);
 }
 textarea { width: 100%; min-height: 120px; resize: vertical; }
@@ -283,3 +283,6 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; }
 .proj-list b { font: 600 11px var(--f-mono); color: var(--ink-dim); margin-right: 6px; }
 .proj-list button { flex: none; font-size: 11px; padding: 5px 8px; color: var(--ink-dim); }
 .proj-list button:hover { color: var(--danger); }
+
+/* iOS zooms into any text field under 16px when it gets focus. Keep fields at 16px. */
+input[type="text"], input[type="url"], textarea, select { font-size: 16px; }

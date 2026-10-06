@@ -78,10 +78,10 @@
       <span class="lab">In this project</span>
       <ul class="proj-list" id="projList"></ul>
     </div>
-    <form id="urlForm" class="src">
+    <form id="urlForm" class="src" novalidate>
       <label for="urlIn">Web address</label>
       <div class="inline">
-        <input id="urlIn" type="text" inputmode="url" placeholder="https://en.wikipedia.org/wiki/Spider" autocomplete="off">
+        <input id="urlIn" type="url" name="url" inputmode="url" placeholder="https://en.wikipedia.org/wiki/Spider" autocomplete="url" autocapitalize="off" autocorrect="off" spellcheck="false">
         <button type="submit" class="primary">Load page</button>
       </div>
       <p class="hint" id="urlHint">Articles, papers, Wikipedia, blogs and PDFs at a link. Pages behind a login won't load; copy their text and paste it below.</p>
