@@ -276,3 +276,10 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; }
 .hint a { color: var(--ink-hi); }
 .theme-srcs { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; color: var(--ink-hi); max-height: 160px; overflow-y: auto; }
 .theme-srcs b { font: 600 11px var(--f-mono); color: var(--ink-dim); margin-right: 6px; }
+.proj-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 200px; overflow-y: auto; }
+.proj-list li { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-hi); padding: 4px 0 4px 8px; border-bottom: 1px solid var(--line); min-width: 0; }
+.proj-list li > span { min-width: 0; overflow-wrap: anywhere; }
+.proj-list li.muted { color: var(--ink-dim); border: 0; font-size: 12px; }
+.proj-list b { font: 600 11px var(--f-mono); color: var(--ink-dim); margin-right: 6px; }
+.proj-list button { flex: none; font-size: 11px; padding: 5px 8px; color: var(--ink-dim); }
+.proj-list button:hover { color: var(--danger); }

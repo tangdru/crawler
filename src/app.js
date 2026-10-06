@@ -136,8 +136,28 @@ async function withBusy(text, fn) {
 }
 
 function sheetError(msg) { const e = $("sheetError"); e.textContent = msg || ""; e.hidden = !msg; }
+function renderProjList() {
+  const ul = $("projList");
+  ul.textContent = "";
+  project.sources.forEach((src, i) => {
+    const li = document.createElement("li");
+    const sample = src.doc.meta && src.doc.meta.sample;
+    li.innerHTML = `<span><b>S${i + 1}</b> ${esc(src.model.title)}${sample ? ' <span class="muted">(sample)</span>' : ""}</span><button type="button" class="ghost">Remove</button>`;
+    li.querySelector("button").addEventListener("click", () => { removeSource(i); renderProjList(); });
+    ul.appendChild(li);
+  });
+  const allSamples = project.sources.every((s) => s.doc.meta && s.doc.meta.sample);
+  if (allSamples) {
+    const li = document.createElement("li");
+    li.className = "muted";
+    li.textContent = "These are samples. The first source you add replaces them.";
+    ul.appendChild(li);
+  }
+}
+
 function openSheet() {
   setPlaying(false); sheetError(""); $("sheet").hidden = false;
+  renderProjList();
   if (sandboxed()) {
     $("urlHint").innerHTML = 'Web addresses only load on the app\'s own site: <a href="https://tangdru.github.io/crawler/" target="_blank" rel="noopener">tangdru.github.io/crawler</a>. This copy runs inside claude.ai, which blocks requests to other websites. Here you can open files or paste text.';
     $("urlHint").classList.add("warn");
