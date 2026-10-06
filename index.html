@@ -15,7 +15,6 @@
 <header class="bar">
   <div class="brand">Reference Crawler</div>
   <div class="ctl">
-    <button id="openBtn" class="primary" type="button">Open…</button>
     <div class="seg" role="radiogroup" aria-label="Lens">
       <button type="button" role="radio" data-lens="references" aria-checked="true">References</button>
       <button type="button" role="radio" data-lens="trends" aria-checked="false">Trends</button>
@@ -45,12 +44,16 @@
       </div>
     </div>
   </div>
+  <nav class="source-bar" aria-label="Sources in this project">
+    <span class="src-label">Sources</span>
+    <div class="src-scroll" id="sourceBar"></div>
+    <button type="button" id="addSource" class="src-add primary">+ Add source</button>
+  </nav>
 </header>
 
 <canvas id="fx" aria-hidden="true"></canvas>
 
 <main id="docView">
-  <nav class="source-bar" id="sourceBar" aria-label="Sources in this project"></nav>
   <div class="docmeta" id="docMeta"></div>
   <article id="doc"></article>
 </main>

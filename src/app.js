@@ -109,10 +109,8 @@ function renderSourceBar() {
     chip.querySelector(".rm").addEventListener("click", () => removeSource(i));
     bar.appendChild(chip);
   });
-  const add = document.createElement("button");
-  add.type = "button"; add.className = "src-add"; add.textContent = "+ Add source";
-  add.addEventListener("click", openSheet);
-  bar.appendChild(add);
+  const on = bar.querySelector(".src-chip.on");
+  if (on) on.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 function renderMeta(model) {
@@ -470,7 +468,7 @@ document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("clic
 $("play").addEventListener("click", () => { setView("doc"); setPlaying(!crawler.playing); });
 $("speed").addEventListener("change", (e) => { crawler.speed = parseFloat(e.target.value); });
 $("skip").addEventListener("click", () => { if (project.sources.length && !crawler.done && ui.lens !== "scan") { setView("doc"); crawler.skip(); } });
-$("openBtn").addEventListener("click", openSheet);
+$("addSource").addEventListener("click", openSheet);
 $("closeSheet").addEventListener("click", () => { $("sheet").hidden = true; });
 $("sheet").addEventListener("click", (e) => { if (e.target === $("sheet")) $("sheet").hidden = true; });
 $("urlForm").addEventListener("submit", (e) => { e.preventDefault(); const v = $("urlIn").value.trim(); if (v) openFrom("url", v); else sheetError("Type or paste a web address first."); });
@@ -515,6 +513,12 @@ window.addEventListener("keydown", (e) => {
 });
 let resizeTimer = 0;
 window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (ui.view === "summary" && project.sources.length) summary.render(project); }, 200); });
+
+// The fixed header wraps differently at each width; keep the page clear of it.
+const headEl = document.querySelector(".bar");
+const setHead = () => document.documentElement.style.setProperty("--head-h", headEl.offsetHeight + "px");
+new ResizeObserver(setHead).observe(headEl);
+setHead();
 
 /* ---------- boot ---------- */
 (async () => {

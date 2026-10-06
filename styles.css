@@ -65,7 +65,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .menu-list button span { font: 11px/1.3 var(--f-body); color: var(--ink-dim); letter-spacing: 0; }
 
 /* ---------- document ---------- */
-main { max-width: 68ch; margin: 0 auto; padding: 140px 16px 190px; }
+main { max-width: 68ch; margin: 0 auto; padding: calc(var(--head-h, 150px) + 24px) 16px 190px; }
 .docmeta { font: 11px/1.6 var(--f-mono); color: var(--ink-dim); letter-spacing: .03em; border-left: 2px solid var(--ink-faint); padding-left: 10px; display: grid; gap: 2px; overflow-wrap: anywhere; }
 .docmeta a { color: var(--link); }
 .docmeta .warn { color: var(--amber); }
@@ -126,7 +126,7 @@ main { max-width: 68ch; margin: 0 auto; padding: 140px 16px 190px; }
 #moodSpark { display: block; }
 
 /* ---------- summary ---------- */
-.summary { max-width: 1160px; margin: 0 auto; padding: 140px 16px 190px; }
+.summary { max-width: 1160px; margin: 0 auto; padding: calc(var(--head-h, 150px) + 24px) 16px 190px; }
 .sum-head .eyebrow { font: 11px/1.4 var(--f-mono); color: var(--ink-dim); letter-spacing: .08em; text-transform: uppercase; overflow-wrap: anywhere; }
 .sum-head h2 { font: 500 32px/1.15 var(--f-display); color: var(--ink-hi); margin: 8px 0; text-wrap: balance; }
 .sum-head .sub { max-width: 70ch; }
@@ -204,7 +204,6 @@ textarea { width: 100%; min-height: 120px; resize: vertical; }
 .toast { position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); z-index: 34; background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 9px 14px; font: 12px var(--f-mono); color: var(--ink-hi); max-width: calc(100% - 32px); }
 
 @media (max-width: 700px) {
-  main, .summary { padding-top: 190px; }
   body.summary-mode .hud { display: none; }
   body.summary-mode .summary { padding-bottom: 60px; }
   .brand { font-size: 18px; }
@@ -215,8 +214,11 @@ textarea { width: 100%; min-height: 120px; resize: vertical; }
 }
 
 /* ---------- projects: source bar ---------- */
-.source-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
-.src-chip { display: inline-flex; align-items: stretch; border: 1px solid var(--line); border-radius: 3px; background: var(--panel); max-width: 100%; min-width: 0; }
+.source-bar { flex: 1 1 100%; display: flex; align-items: center; gap: 10px; min-width: 0; border-top: 1px solid var(--line); padding-top: 8px; }
+.src-label { flex: none; font: 11px/1 var(--f-mono); color: var(--ink-dim); text-transform: uppercase; letter-spacing: .08em; }
+.src-scroll { display: flex; gap: 6px; overflow-x: auto; min-width: 0; flex: 1 1 auto; scrollbar-width: thin; padding-bottom: 2px; }
+.src-scroll > * { flex: none; }
+.src-chip { display: inline-flex; align-items: stretch; border: 1px solid var(--line); border-radius: 3px; background: var(--panel); max-width: 280px; min-width: 0; }
 .src-chip.on { border-color: var(--accent, var(--magenta)); }
 .src-chip button { border: 0; background: transparent; border-radius: 0; font: 12px/1.2 var(--f-mono); padding: 7px 9px; }
 .src-chip .pick { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -226,7 +228,7 @@ textarea { width: 100%; min-height: 120px; resize: vertical; }
 .src-chip .rm:hover { color: var(--danger); }
 .ld { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-left: 3px; vertical-align: 1px; }
 .ld.references { background: #ff3fd8; } .ld.trends { background: #33e1ff; } .ld.tone { background: #ffd84d; }
-.src-add { font: 12px/1.2 var(--f-mono); border-style: dashed; }
+.src-add { font: 12px/1.2 var(--f-mono); white-space: nowrap; }
 label.check { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--ink-dim); cursor: pointer; }
 label.check input { margin-top: 2px; }
 textarea.short { min-height: 70px; }
@@ -234,7 +236,7 @@ textarea.short { min-height: 70px; }
 
 /* ---------- theme wall ---------- */
 .wall {
-  position: fixed; z-index: 15; right: 16px; top: 76px; bottom: 96px; width: 270px;
+  position: fixed; z-index: 15; right: 16px; top: calc(var(--head-h, 120px) + 12px); bottom: 96px; width: 270px;
   overflow-y: auto; display: grid; align-content: start; gap: 8px; padding: 2px;
 }
 .wall-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; font: 11px/1.3 var(--f-mono); color: var(--ink-2); text-transform: uppercase; letter-spacing: .06em; }
@@ -286,3 +288,8 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; }
 
 /* iOS zooms into any text field under 16px when it gets focus. Keep fields at 16px. */
 input[type="text"], input[type="url"], textarea, select { font-size: 16px; }
+.source-bar .src-add { flex: none; }
+@media (max-width: 700px) {
+  .src-chip { max-width: 190px; }
+  .src-label { display: none; }
+}
