@@ -154,7 +154,7 @@ function renderProjList() {
 }
 
 function openSheet() {
-  setPlaying(false); sheetError(""); $("sheet").hidden = false;
+  pauseForAway(); sheetError(""); $("sheet").hidden = false;
   renderProjList();
   if (sandboxed()) {
     $("urlHint").innerHTML = 'Web addresses only load on the app\'s own site: <a href="https://tangdru.github.io/crawler/" target="_blank" rel="noopener">tangdru.github.io/crawler</a>. This copy runs inside claude.ai, which blocks requests to other websites. Here you can open files or paste text.';
@@ -195,6 +195,7 @@ function openSample(name) {
 /* ---------- lenses ---------- */
 function startLens(lens, autoplay = true) {
   ui.lens = lens;
+  ui.resumeOnReturn = false;
   document.querySelectorAll("[data-lens]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.lens === (lens === "scan" ? "themes" : lens))));
   document.documentElement.style.setProperty("--accent", LENS_ACCENT[lens]);
   setView("doc");
@@ -219,7 +220,18 @@ function chooseLens(lens) {
 function setPlaying(v) {
   if (v && crawler.done) crawler.start(ui.lens);
   crawler.setPlaying(v);
-  $("play").textContent = v ? "Pause" : crawler.done ? "Replay" : "Play";
+  playLabel();
+}
+// One button: Pause while crawling, Resume part-way, Replay at the end, Play at the start.
+function playLabel() {
+  $("play").textContent = crawler.playing ? "Pause" : crawler.done ? "Replay" : crawler.idx > 0 ? "Resume" : "Play";
+}
+// Leaving the crawl (Summary, the Add dialog) pauses it; coming back picks up where it was.
+function pauseForAway() {
+  if (crawler.playing && ui.lens !== "scan") { ui.resumeOnReturn = true; setPlaying(false); }
+}
+function resumeIfAway() {
+  if (ui.resumeOnReturn) { ui.resumeOnReturn = false; if (!crawler.done && ui.view === "doc") setPlaying(true); }
 }
 
 function finished(lens) {
@@ -232,7 +244,7 @@ function finished(lens) {
   const key = lens === "themes" ? null : lens;
   const first = key && !src.ran[key];
   if (key) { src.ran[key] = true; persist(); renderSourceBar(); }
-  $("play").textContent = "Replay";
+  playLabel();
   if (ui.view === "summary") summary.render(project);
   toast(lens === "themes" ? "Themes are in the summary" : first ? `${lens[0].toUpperCase() + lens.slice(1)} added to the summary` : "Summary updated");
   setTimeout(() => { if (crawler.done && ui.view === "doc" && crawler.lens === lens) setView("summary"); }, 1400);
@@ -464,13 +476,18 @@ async function doExport(kind) {
 
 /* ---------- controls ---------- */
 document.querySelectorAll("[data-lens]").forEach((b) => b.addEventListener("click", () => chooseLens(b.dataset.lens)));
-document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => { if (b.dataset.view === "summary" && ui.lens !== "scan") setPlaying(false); setView(b.dataset.view); }));
+document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => {
+  if (b.dataset.view === "summary") pauseForAway();
+  setView(b.dataset.view);
+  if (b.dataset.view === "doc") resumeIfAway();
+}));
 $("play").addEventListener("click", () => { setView("doc"); setPlaying(!crawler.playing); });
 $("speed").addEventListener("change", (e) => { crawler.speed = parseFloat(e.target.value); });
 $("skip").addEventListener("click", () => { if (project.sources.length && !crawler.done && ui.lens !== "scan") { setView("doc"); crawler.skip(); } });
 $("addSource").addEventListener("click", openSheet);
-$("closeSheet").addEventListener("click", () => { $("sheet").hidden = true; });
-$("sheet").addEventListener("click", (e) => { if (e.target === $("sheet")) $("sheet").hidden = true; });
+const closeSheet = () => { $("sheet").hidden = true; resumeIfAway(); };
+$("closeSheet").addEventListener("click", closeSheet);
+$("sheet").addEventListener("click", (e) => { if (e.target === $("sheet")) closeSheet(); });
 $("urlForm").addEventListener("submit", (e) => { e.preventDefault(); const v = $("urlIn").value.trim(); if (v) openFrom("url", v); else sheetError("Type or paste a web address first."); });
 $("pasteForm").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -503,7 +520,7 @@ exportMenu.querySelectorAll("[data-export]").forEach((b) => b.addEventListener("
 
 window.addEventListener("keydown", (e) => {
   if (e.target.closest("input, textarea, select, [contenteditable]")) return;
-  if (e.key === "Escape") { $("sheet").hidden = true; $("themesSheet").hidden = true; exportMenu.hidden = true; return; }
+  if (e.key === "Escape") { if (!$("sheet").hidden) closeSheet(); $("themesSheet").hidden = true; exportMenu.hidden = true; return; }
   if (!$("sheet").hidden || !$("themesSheet").hidden) return;
   if (e.code === "Space") { e.preventDefault(); setView("doc"); setPlaying(!crawler.playing); }
   else if (e.key === "1") chooseLens("trends");
