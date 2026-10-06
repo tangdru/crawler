@@ -53,7 +53,11 @@ export function fromText(raw, title, meta = {}) {
     flush();
   }
   const first = blocks.find((b) => /^h/.test(b.kind));
-  return { title: title || (first ? first.segs.map((s) => s.text).join("") : "Pasted text"), meta, blocks };
+  // A short opening line on its own reads as the title
+  const lead = blocks[0] && blocks[0].kind === "p" ? blocks[0].segs.map((s) => s.text).join("").trim() : "";
+  const leadTitle = lead && lead.length <= 90 && !/[.!?]$/.test(lead) ? lead : "";
+  if (!title && !first && leadTitle) blocks[0].kind = "h2";
+  return { title: title || (first ? first.segs.map((s) => s.text).join("") : leadTitle || "Pasted text"), meta, blocks };
 }
 
 /* ---------- HTML (pages, Word, EPUB) ---------- */

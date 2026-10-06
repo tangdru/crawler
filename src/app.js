@@ -57,6 +57,9 @@ function persist() {
 
 function addSources(docs, { replace = false } = {}) {
   const made = docs.map((d) => makeSource(d));
+  // Your first own source replaces a project that holds only samples.
+  const onlySamples = project.sources.length && project.sources.every((s) => s.doc.meta && s.doc.meta.sample);
+  if (onlySamples && made.some((m) => !(m.doc.meta && m.doc.meta.sample))) replace = true;
   if (replace) { project.sources = []; project.themes = null; }
   project.sources.push(...made);
   project.active = project.sources.length - made.length;
@@ -153,7 +156,7 @@ async function openFrom(kind, value) {
     addSources([doc], { replace: $("replaceProject").checked });
     $("replaceProject").checked = false;
     $("sheet").hidden = true;
-    toast(`Added S${project.sources.length}: ${active().model.title.slice(0, 50)}`);
+    toast(project.sources.length === 1 ? `New project: ${active().model.title.slice(0, 50)}` : `Added S${project.sources.length}: ${active().model.title.slice(0, 50)}`);
   } catch (err) {
     console.error(err);
     $("sheet").hidden = false;
@@ -224,6 +227,7 @@ async function openThemesSheet() {
   setPlaying(false);
   const est = estimate(project.sources);
   const n = project.sources.length;
+  $("themesSources").innerHTML = project.sources.map((src, i) => `<li><b>S${i + 1}</b> ${esc(src.model.title)}${src.doc.meta && src.doc.meta.sample ? ' <span class="muted">(sample)</span>' : ""}</li>`).join("");
   $("themesInfo").innerHTML = `Claude will read <b>${n} source${n === 1 ? "" : "s"}</b> (about ${Math.round(est.inTok / 1000)}k tokens) and return themes with supporting quotes. Estimated cost: <b>about $${est.dollars < 0.1 ? est.dollars.toFixed(2) : est.dollars.toFixed(2)}</b> on your Anthropic account. Usually 20 seconds to 2 minutes.`;
   $("themesQuestion").value = project.question || "";
   $("themesError").hidden = true;
