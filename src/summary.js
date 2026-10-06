@@ -101,34 +101,52 @@ export class Summary {
     this.project = project;
     const view = project.sources[project.active];
     const { model, ran } = view;
+    const n = project.sources.length;
+    const srcs = project.sources;
     this.root.textContent = "";
-    const anySource = project.sources.some((s) => s.ran.references || s.ran.trends || s.ran.tone);
+    const anySource = srcs.some((s) => s.ran.references || s.ran.trends || s.ran.tone);
     const any = ran.references || ran.trends || ran.tone;
     const head = document.createElement("header");
     head.className = "sum-head";
-    const n = project.sources.length;
     head.innerHTML = `<div class="eyebrow">Summary · ${n} source${n === 1 ? "" : "s"}</div>
       <h2>${project.themes || anySource ? "What the crawler found" : "Run a crawl to build the summary"}</h2>
-      <p class="sub">${project.themes || anySource ? "Each lens you run adds panels here. Themes cover the whole project; the other lenses report on each source." : "Pick a lens and press Play. Each lens you run adds its panels here, and nothing is lost when you switch."}</p>`;
+      <p class="sub">${project.themes || anySource ? "Sections follow the lens order: Trends, Tone, Themes, References. Each lens you run adds its section; Themes cover the whole project, the others report on the source you're viewing." : "Pick a lens and press Play. Each lens you run adds its section here, and nothing is lost when you switch."}</p>`;
     this.root.appendChild(head);
+    if (!project.themes && !anySource) return;
+
+    const scope = n > 1 ? `S${project.active + 1} · ${model.title}. Switch sources with the chips at the top.` : "";
+
+    // Overview: this source's numbers, and the sources side by side
+    if (any || (n > 1 && anySource)) {
+      this.section(n > 1 ? "Overview" : model.title, n > 1 ? `Numbers for ${scope}` : "");
+      if (any) { this.tiles(view); this.root.appendChild(this.grid); }
+      if (n > 1 && anySource) this.sourcesTable(project);
+    }
+
+    const withTrends = srcs.filter((s) => s.ran.trends);
+    if (ran.trends || withTrends.length >= 2) {
+      this.section("Trends", ran.trends ? scope : "Trends hasn't run on this source yet; showing the comparison across sources where it has.");
+      if (ran.trends) { this.keywords(view); this.termTrends(view); this.topicStrip(view); this.cooc(view); }
+      if (withTrends.length >= 2) this.keywordHeat(project, withTrends);
+    }
+
+    const withTone = srcs.filter((s) => s.ran.tone);
+    if (ran.tone || withTone.length >= 2) {
+      this.section("Tone", ran.tone ? scope : "Tone hasn't run on this source yet; showing the comparison across sources where it has.");
+      if (ran.tone) { this.moodLine(view); this.emotionHeat(view); this.hedgeLines(view); this.uncited(view); }
+      if (ran.trends && ran.tone) this.moodByTopic(view);
+      if (withTone.length >= 2) this.moodBySource(project, withTone);
+    }
 
     if (project.themes) this.themesSection(project);
-    if (n > 1 && anySource) this.sourcesSection(project);
 
-    const lensNames = ["trends", "tone", "references"].filter((l) => ran[l]).map((l) => l[0].toUpperCase() + l.slice(1));
-    this.section(n > 1 ? `This source: ${model.title}` : model.title,
-      any ? `Built from: ${lensNames.join(" + ")}. ${!ran.trends || !ran.tone ? "Run the other lenses on this source to add more panels." : "Trends and Tone have both run, so the combined panels are shown too."}`
-          : "No lens has run on this source yet. Pick one and press Play.");
-    if (!any) return;
-    this.tiles(view);
-    this.root.appendChild(this.grid); // keep tiles above this source's panels
-    if (ran.trends) { this.keywords(view); this.termTrends(view); this.topicStrip(view); this.cooc(view); }
-    if (ran.tone) { this.moodLine(view); this.emotionHeat(view); this.hedgeLines(view); this.uncited(view); }
-    if (ran.trends && ran.tone) this.moodByTopic(view);
-    this.quotes(view);
-    this.entityBars(view);
-    this.yearColumns(view);
-    this.entityTable(view);
+    if (any) {
+      this.section("References", `Collected by the reference pass, which runs under every lens. ${scope}`);
+      this.quotes(view);
+      this.entityBars(view);
+      this.yearColumns(view);
+      this.entityTable(view);
+    }
   }
 
   /* ---------- project level ---------- */
@@ -140,10 +158,9 @@ export class Summary {
     const notes = [];
     if (missing) notes.push(`${missing} source${missing === 1 ? " was" : "s were"} added after this run; run Themes again to include ${missing === 1 ? "it" : "them"}.`);
     if (res.dropped) notes.push(`${res.dropped} quote${res.dropped === 1 ? "" : "s"} couldn't be found word for word in the text and ${res.dropped === 1 ? "was" : "were"} removed.`);
-    this.section(`Themes across ${covered} source${covered === 1 ? "" : "s"}`,
-      `Found by Claude, then checked by this page: every quote below appears word for word in its source. ${notes.join(" ")}`);
+    this.section("Themes", `Across ${covered} source${covered === 1 ? "" : "s"}. Found by Claude, then checked by this page: every quote below appears word for word in its source. ${notes.join(" ")}`);
 
-    const ov = this.panel("Overview", res.question ? `Research question: ${res.question}` : "", true);
+    const ov = this.panel("Key findings", res.question ? `Research question: ${res.question}` : "", true);
     const p = document.createElement("p"); p.className = "overview"; p.textContent = res.overview; ov.appendChild(p);
 
     const idx = new Map(project.sources.map((s, i) => [s.key, i]));
@@ -205,24 +222,18 @@ export class Summary {
     body.appendChild(s);
   }
 
-  sourcesSection(project) {
-    this.section("Sources compared", "One row per source. Keyword and mood columns fill in once Trends or Tone has run on that source.");
-    const body = this.panel("Sources", "", true);
+  sourcesTable(project) {
+    const body = this.panel("Sources", "One row per source. Keyword and mood columns fill in once Trends or Tone has run on that source. Click a row to view it.", true);
     const wrap = document.createElement("div"); wrap.className = "twrap";
     const rows = project.sources.map((src, i) => {
       const m = src.model;
       const kw = src.ran.trends ? src.trends.top.slice(0, 3).map((e) => e.term).join(", ") : "";
       const mood = src.ran.tone ? src.tone.totals.mean : null;
-      return `<tr data-src="${i}"><td>S${i + 1}</td><td>${esc(m.title)}</td><td class="num">${m.wordCount.toLocaleString("en-US")}</td><td class="num">${m.entities.length}</td><td>${esc(kw) || '<span class="muted">run Trends</span>'}</td><td>${mood == null ? '<span class="muted">run Tone</span>' : `<span class="tone ${mood > 0.05 ? "p" : mood < -0.05 ? "n" : ""}">${(mood >= 0 ? "+" : "") + mood.toFixed(2)}</span>`}</td></tr>`;
+      return `<tr data-src="${i}"${i === project.active ? ' class="on"' : ""}><td>S${i + 1}</td><td>${esc(m.title)}</td><td class="num">${m.wordCount.toLocaleString("en-US")}</td><td class="num">${m.entities.length}</td><td>${esc(kw) || '<span class="muted">run Trends</span>'}</td><td>${mood == null ? '<span class="muted">run Tone</span>' : `<span class="tone ${mood > 0.05 ? "p" : mood < -0.05 ? "n" : ""}">${(mood >= 0 ? "+" : "") + mood.toFixed(2)}</span>`}</td></tr>`;
     }).join("");
     wrap.innerHTML = `<table><thead><tr><th>ID</th><th>Source</th><th>Words</th><th>References</th><th>Top keywords</th><th>Mood</th></tr></thead><tbody>${rows}</tbody></table>`;
     wrap.querySelectorAll("tr[data-src]").forEach((tr) => tr.addEventListener("click", () => this.jump({ sourceIndex: +tr.dataset.src })));
     body.appendChild(wrap);
-
-    const withTrends = project.sources.filter((s) => s.ran.trends);
-    if (withTrends.length >= 2) this.keywordHeat(project, withTrends);
-    const withTone = project.sources.filter((s) => s.ran.tone);
-    if (withTone.length >= 2) this.moodBySource(project, withTone);
   }
 
   keywordHeat(project, srcs) {

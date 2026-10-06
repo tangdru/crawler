@@ -293,3 +293,4 @@ input[type="text"], input[type="url"], textarea, select { font-size: 16px; }
   .src-chip { max-width: 190px; }
   .src-label { display: none; }
 }
+tbody tr.on td { color: var(--ink-hi); background: rgba(255,255,255,.04); }
