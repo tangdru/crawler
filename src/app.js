@@ -1,5 +1,5 @@
-// App wiring: a project of sources in, lenses run per source, themes across the
-// project, summary and CSVs out.
+// App wiring: a project of sources in, lenses run per source, Claude's Insights and UXR
+// across the project, summary and CSVs out.
 
 import { buildModel, renderModel } from "./model.js";
 import { analyzeTrends } from "./trends.js";
@@ -9,9 +9,10 @@ import { Summary } from "./summary.js";
 import { loadFile, loadUrl, fromText, sandboxed } from "./loaders.js";
 import { SAMPLES, SAMPLE_PROJECTS } from "./samples.js";
 import { ENTITY_TYPES } from "./references.js";
-import { entitiesCsv, sentencesCsv, termsCsv, themesCsv, zipAll, saveFile, slug } from "./export.js";
-import { requestThemes, verify, indexFor, estimate, checkReady } from "./themes.js";
+import { entitiesCsv, sentencesCsv, termsCsv, insightsCsv, uxrCsv, zipAll, saveFile, slug } from "./export.js";
+import { request, verifyInsights, verifyUxr, verifyAsk, upgradeUxr, cardsFor, indexFor, pruneSource, estimate, money, checkReady, isAI, AI_LENSES, AI_NAME } from "./ai.js";
 import { saveProject, loadProject } from "./project.js";
+import { LENSES, LENS } from "./lenses.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -19,23 +20,24 @@ const LENS_TEXT = {
   references: "References: boxes identifiers, citations, quotes, dates and figures as the crawler reaches them.",
   trends: "Trends: glowing words are keywords (brighter = more distinctive), threads link repeat mentions, and paragraphs take their topic's color.",
   tone: "Tone: blue wash = positive wording, red = negative. Dimmed italics are hedges; underlined words sound certain; emotion words get a label.",
-  themes: "Themes: the crawler stops on each quote Claude used as evidence and pins it to its theme on the wall.",
+  insights: "Insights: the crawler stops on each quote Claude used. Key points pin to the wall; claims are tinted by how well they're backed (blue backed, amber hedged, red asserted).",
+  uxr: "UXR: the crawler stops on each quote Claude used as evidence, pins it to its theme on the wall, and flags pain points.",
   scan: "Claude is reading every source. The crawler skims along while it works."
 };
-const LENS_ACCENT = { references: "#ff3fd8", trends: "#33e1ff", tone: "#ffd84d", themes: "#46f08a", scan: "#46f08a" };
+const LENS_ACCENT = { references: "#ff3fd8", trends: "#33e1ff", tone: "#ffd84d", insights: "#46f08a", uxr: "#b58cff", scan: "#46f08a" };
 
-const project = { sources: [], active: 0, themes: null, question: "" };
-const ui = { lens: "trends", view: "doc", themeRun: null };
+const project = { sources: [], active: 0, ai: { insights: null, uxr: null }, asks: [], questions: { insights: "", uxr: "" } };
+const ui = { lens: "trends", view: "doc", aiRun: null };
 const newKey = () => Math.random().toString(36).slice(2, 10);
 
 const crawler = new Crawler({
   canvas: $("fx"),
   onProgress: (p) => hud(p),
   onDone: (lens) => finished(lens),
-  onEvidence: (theme) => wallPulse(theme),
+  onEvidence: (card) => wallPulse(card),
   getCardPos: (id) => cardPos(id)
 });
-const summary = new Summary($("summaryView"), $("tip"), { jump });
+const summary = new Summary($("summaryView"), $("tip"), { jump, ask, askCost, runAI: (lens) => chooseLens(lens) });
 
 /* ---------- sources ---------- */
 function makeSource(doc, key = newKey(), ran = {}) {
@@ -51,7 +53,7 @@ const active = () => project.sources[project.active];
 function persist() {
   saveProject({
     sources: project.sources.map((s) => ({ key: s.key, doc: s.doc, ran: s.ran })),
-    active: project.active, themes: project.themes, question: project.question
+    active: project.active, ai: project.ai, asks: project.asks, questions: project.questions
   });
 }
 
@@ -60,7 +62,7 @@ function addSources(docs, { replace = false } = {}) {
   // Your first own source replaces a project that holds only samples.
   const onlySamples = project.sources.length && project.sources.every((s) => s.doc.meta && s.doc.meta.sample);
   if (onlySamples && made.some((m) => !(m.doc.meta && m.doc.meta.sample))) replace = true;
-  if (replace) { project.sources = []; project.themes = null; }
+  if (replace) { project.sources = []; project.ai = { insights: null, uxr: null }; project.asks = []; }
   project.sources.push(...made);
   project.active = project.sources.length - made.length;
   persist();
@@ -69,11 +71,8 @@ function addSources(docs, { replace = false } = {}) {
 
 function removeSource(i) {
   const [gone] = project.sources.splice(i, 1);
-  if (project.themes) {
-    for (const t of project.themes.themes) t.evidence = t.evidence.filter((e) => e.sourceKey !== gone.key);
-    project.themes.themes = project.themes.themes.filter((t) => t.evidence.length);
-    if (!project.themes.themes.length) project.themes = null;
-  }
+  for (const l of AI_LENSES) project.ai[l] = pruneSource(l, project.ai[l], gone.key);
+  for (const a of project.asks) for (const pt of a.points) pt.evidence = pt.evidence.filter((e) => e.sourceKey !== gone.key);
   if (!project.sources.length) { persist(); openSample("river"); return; }
   project.active = Math.min(project.active, project.sources.length - 1);
   persist();
@@ -89,12 +88,13 @@ function showSource(i, { autoplay = true, lens } = {}) {
   crawler.load(src.model, analysesFor(src));
   (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => crawler.measure());
   let l = lens || ui.lens;
-  if (l === "themes" && !project.themes) l = "trends";
+  if (isAI(l) && !project.ai[l]) l = "trends";
   startLens(l, autoplay);
 }
 
 function analysesFor(src) {
-  return { trends: src.trends, tone: src.tone, themeIndex: indexFor(project.themes, src.key) };
+  const lens = isAI(ui.lens) ? ui.lens : null;
+  return { trends: src.trends, tone: src.tone, aiIndex: lens ? indexFor(cardsFor(lens, project.ai[lens]), src.key) : new Map() };
 }
 
 function renderSourceBar() {
@@ -196,8 +196,9 @@ function openSample(name) {
 function startLens(lens, autoplay = true) {
   ui.lens = lens;
   ui.resumeOnReturn = false;
-  document.querySelectorAll("[data-lens]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.lens === (lens === "scan" ? "themes" : lens))));
-  document.documentElement.style.setProperty("--accent", LENS_ACCENT[lens]);
+  const shown = lens === "scan" ? (ui.aiRun ? ui.aiRun.lens : "insights") : lens;
+  document.querySelectorAll("[data-lens]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.lens === shown)));
+  document.documentElement.style.setProperty("--accent", LENS_ACCENT[shown]);
   setView("doc");
   crawler.load(active().model, analysesFor(active()));
   crawler.start(lens);
@@ -208,10 +209,10 @@ function startLens(lens, autoplay = true) {
 
 function chooseLens(lens) {
   if (!project.sources.length) return;
-  if (lens === "themes") {
-    if (ui.themeRun) { startLens("scan"); return; }
-    if (project.themes && themesCurrent()) { startLens("themes"); return; }
-    openThemesSheet();
+  if (isAI(lens)) {
+    if (ui.aiRun) { if (ui.aiRun.lens === lens) startLens("scan"); else toast(`Claude is still working on ${AI_NAME[ui.aiRun.lens]}. One run at a time.`); return; }
+    if (project.ai[lens] && aiCurrent(lens)) { startLens(lens); return; }
+    openAiSheet(lens);
     return;
   }
   startLens(lens);
@@ -237,112 +238,183 @@ function resumeIfAway() {
 function finished(lens) {
   if (lens === "scan") {
     // keep skimming until Claude answers
-    if (ui.themeRun) { crawler.start("scan"); crawler.setPlaying(true); }
+    if (ui.aiRun) { crawler.start("scan"); crawler.setPlaying(true); }
     return;
   }
   const src = active();
-  const key = lens === "themes" ? null : lens;
+  const key = isAI(lens) ? null : lens;
   const first = key && !src.ran[key];
   if (key) { src.ran[key] = true; persist(); renderSourceBar(); }
   playLabel();
   if (ui.view === "summary") summary.render(project);
-  toast(lens === "themes" ? "Themes are in the summary" : first ? `${lens[0].toUpperCase() + lens.slice(1)} added to the summary` : "Summary updated");
+  toast(isAI(lens) ? `${AI_NAME[lens]} ${lens === "uxr" ? "is" : "are"} in the summary` : first ? `${lens[0].toUpperCase() + lens.slice(1)} added to the summary` : "Summary updated");
   setTimeout(() => { if (crawler.done && ui.view === "doc" && crawler.lens === lens) setView("summary"); }, 1400);
 }
 
-/* ---------- themes ---------- */
-const themesCurrent = () => project.themes && project.sources.every((s) => project.themes.sourceKeys.includes(s.key));
-
-async function openThemesSheet() {
-  setPlaying(false);
-  const est = estimate(project.sources);
-  const n = project.sources.length;
-  $("themesSources").innerHTML = project.sources.map((src, i) => `<li><b>S${i + 1}</b> ${esc(src.model.title)}${src.doc.meta && src.doc.meta.sample ? ' <span class="muted">(sample)</span>' : ""}</li>`).join("");
-  $("themesInfo").innerHTML = `Claude will read <b>${n} source${n === 1 ? "" : "s"}</b> (about ${Math.round(est.inTok / 1000)}k tokens) and return themes with supporting quotes. Estimated cost: <b>about $${est.dollars < 0.1 ? est.dollars.toFixed(2) : est.dollars.toFixed(2)}</b> on your Anthropic account. Usually 20 seconds to 2 minutes.`;
-  $("themesQuestion").value = project.question || "";
-  $("themesError").hidden = true;
-  $("themesRun").disabled = est.tooLong;
-  if (est.tooLong) { $("themesError").textContent = "These sources are too long to analyse together. Remove a source or two first."; $("themesError").hidden = false; }
-  $("themesStale").hidden = !(project.themes && !themesCurrent());
-  $("themesSheet").hidden = false;
-  const ready = await checkReady();
-  if (!ready.ready) {
-    $("themesError").textContent = ready.reason === "no_key"
-      ? "Theme finding isn't set up: the Supabase project has no Anthropic API key."
-      : sandboxed()
-        ? "Themes need the app's own site, https://tangdru.github.io/crawler/. This copy runs inside claude.ai, which blocks requests to other websites."
-        : "Can't reach the theme service. Check your connection and try again.";
-    $("themesError").hidden = false;
-    $("themesRun").disabled = true;
+/* ---------- Claude: Insights and UXR ---------- */
+const AI_COPY = {
+  insights: {
+    title: "Find insights with Claude",
+    what: "A plain-language read: the gist and key points, the main claims and how well each is backed, who says what, where sources agree or clash, and what's missing.",
+    returns: "the gist, claims and voices",
+    qLabel: "What are you reading this for? (optional)",
+    qHint: "e.g. Deciding whether to support the project; I want to know what's solid and what's spin.",
+    run: "Find insights"
+  },
+  uxr: {
+    title: "UX research synthesis with Claude",
+    what: "What a UX researcher would pull out: themes with supporting quotes, pain points, the groups of people in your sources, jobs to be done, opportunities and open questions.",
+    returns: "themes, pain points, personas, jobs and opportunities",
+    qLabel: "Research question (optional)",
+    qHint: "e.g. What worries residents about the project, and what would win their support?",
+    run: "Run UXR synthesis"
   }
+};
+const aiCurrent = (lens) => { const r = project.ai[lens]; return r && project.sources.every((s) => r.sourceKeys.includes(s.key)); };
+
+async function openAiSheet(lens) {
+  setPlaying(false);
+  ui.sheetLens = lens;
+  const copy = AI_COPY[lens];
+  const est = estimate(project.sources, lens);
+  const n = project.sources.length;
+  $("aiTitle").textContent = copy.title;
+  $("aiWhat").textContent = copy.what;
+  $("aiSources").innerHTML = project.sources.map((src, i) => `<li><b>S${i + 1}</b> ${esc(src.model.title)}${src.doc.meta && src.doc.meta.sample ? ' <span class="muted">(sample)</span>' : ""}</li>`).join("");
+  $("aiInfo").innerHTML = `Claude will read <b>${n} source${n === 1 ? "" : "s"}</b> (about ${Math.round(est.inTok / 1000)}k tokens) and return ${copy.returns}, each backed by quotes. Estimated cost: <b>about ${money(est.dollars)}</b> on your Anthropic account. Usually 20 seconds to 2 minutes.`;
+  $("aiQLabel").textContent = copy.qLabel;
+  $("aiQuestion").placeholder = copy.qHint;
+  $("aiQuestion").value = project.questions[lens] || "";
+  $("aiRun").textContent = copy.run;
+  $("aiError").hidden = true;
+  $("aiRun").disabled = est.tooLong;
+  if (est.tooLong) { $("aiError").textContent = "These sources are too long to analyse together. Remove a source or two first."; $("aiError").hidden = false; }
+  $("aiStale").hidden = !(project.ai[lens] && !aiCurrent(lens));
+  $("aiSheet").hidden = false;
+  const ready = await checkReady();
+  if (!ready.ready) aiUnavailable(ready.reason);
+}
+function aiUnavailable(reason) {
+  $("aiError").textContent = reason === "no_key"
+    ? "Claude isn't set up: the Supabase project has no Anthropic API key."
+    : sandboxed()
+      ? "Claude lenses need the app's own site, https://tangdru.github.io/crawler/. This copy runs inside claude.ai, which blocks requests to other websites."
+      : "Can't reach Claude. Check your connection and try again.";
+  $("aiError").hidden = false;
+  $("aiRun").disabled = true;
 }
 
-async function runThemes() {
-  const question = $("themesQuestion").value.trim();
-  project.question = question;
-  $("themesSheet").hidden = true;
+async function runAI() {
+  const lens = ui.sheetLens;
+  const question = $("aiQuestion").value.trim();
+  project.questions[lens] = question;
+  $("aiSheet").hidden = true;
   const sources = project.sources.slice();
-  ui.themeRun = { started: performance.now(), chars: 0, seconds: 0 };
+  ui.aiRun = { lens, started: performance.now(), chars: 0, seconds: 0 };
   startLens("scan");
   try {
-    const raw = await requestThemes(sources, question, (p) => { if (ui.themeRun) { ui.themeRun.chars = p.chars; ui.themeRun.seconds = p.seconds; } });
-    const checked = verify(raw, sources);
-    if (!checked.themes.length) throw new Error("Claude's answer had no quotes that could be found in the text, so nothing is shown. Try again.");
-    project.themes = { ...checked, question, sourceKeys: sources.map((s) => s.key), model: raw.model, usage: raw.usage, at: new Date().toISOString() };
-    ui.themeRun = null;
+    const raw = await request(lens, sources, question, (p) => { if (ui.aiRun) { ui.aiRun.chars = p.chars; ui.aiRun.seconds = p.seconds; } });
+    const checked = lens === "uxr" ? verifyUxr(raw, sources) : verifyInsights(raw, sources);
+    const main = lens === "uxr" ? checked.themes : checked.keyPoints;
+    if (!main.length) throw new Error("Claude's answer had no quotes that could be found in the text, so nothing is shown. Try again.");
+    project.ai[lens] = { ...checked, question, sourceKeys: sources.map((s) => s.key), model: raw.model, usage: raw.usage, at: new Date().toISOString() };
+    ui.aiRun = null;
     persist();
     const u = raw.usage || {};
-    toast(`Found ${checked.themes.length} themes${checked.dropped ? `; ${checked.dropped} unverifiable quote${checked.dropped === 1 ? "" : "s"} removed` : ""} · ${(u.input_tokens || 0).toLocaleString("en-US")} in / ${(u.output_tokens || 0).toLocaleString("en-US")} out tokens`);
-    startLens("themes");
+    const found = lens === "uxr" ? `${checked.themes.length} themes, ${checked.painPoints.length} pain points` : `${checked.keyPoints.length} key points, ${checked.claims.length} claims`;
+    toast(`${found}${checked.dropped ? `; ${checked.dropped} unverifiable quote${checked.dropped === 1 ? "" : "s"} removed` : ""} · ${(u.input_tokens || 0).toLocaleString("en-US")} in / ${(u.output_tokens || 0).toLocaleString("en-US")} out tokens`);
+    startLens(lens);
   } catch (err) {
-    ui.themeRun = null;
+    ui.aiRun = null;
     console.error(err);
     startLens("trends", false);
-    $("themesError").textContent = err.message || String(err);
-    $("themesError").hidden = false;
-    $("themesSheet").hidden = false;
+    ui.sheetLens = lens;
+    $("aiError").textContent = err.message || String(err);
+    $("aiError").hidden = false;
+    $("aiSheet").hidden = false;
   }
 }
 
-/* ---------- theme wall ---------- */
+// Ask your sources: one question, answered only from verified quotes. Called from the summary.
+async function ask(question) {
+  const sources = project.sources.slice();
+  const raw = await request("ask", sources, question);
+  const checked = verifyAsk(raw, sources);
+  project.asks.unshift({ question, ...checked, sourceKeys: sources.map((s) => s.key), usage: raw.usage, at: new Date().toISOString() });
+  project.asks = project.asks.slice(0, 30);
+  persist();
+  return checked;
+}
+function askCost() { return estimate(project.sources, "ask"); }
+
+/* ---------- findings wall ---------- */
+function wallCards() {
+  return isAI(ui.lens) ? cardsFor(ui.lens, project.ai[ui.lens]).filter((c) => c.wall) : [];
+}
 function renderWall() {
   const wall = $("wall");
-  const show = ui.lens === "themes" && project.themes && ui.view === "doc";
+  const show = isAI(ui.lens) && project.ai[ui.lens] && ui.view === "doc";
   wall.hidden = !show;
   if (!show) return;
-  const here = indexFor(project.themes, active().key);
+  const all = cardsFor(ui.lens, project.ai[ui.lens]);
+  const here = indexFor(all, active().key);
   const countHere = new Map();
-  for (const hits of here.values()) for (const h of hits) countHere.set(h.theme.id, (countHere.get(h.theme.id) || 0) + 1);
+  for (const hits of here.values()) for (const h of hits) countHere.set(h.card.key, (countHere.get(h.card.key) || 0) + 1);
+  $("wallTitle").textContent = ui.lens === "uxr" ? "Theme wall" : "Key points";
   $("wallSub").textContent = `· pinned as the crawler reads S${project.active + 1}`;
   const cards = $("wallCards");
   cards.textContent = "";
-  for (const t of project.themes.themes) {
+  for (const c of all.filter((x) => x.wall)) {
     const card = document.createElement("div");
     card.className = "wcard";
-    card.dataset.theme = t.id;
-    card.style.setProperty("--tc", t.color);
-    const total = t.evidence.length;
-    card.innerHTML = `<div class="wt"><span class="num">${t.id + 1}</span>${esc(t.title)}</div><div class="wn"><b data-n>0</b>/${countHere.get(t.id) || 0} here · ${total} in project${t.kind === "tension" ? " · tension" : ""}</div><div class="wq" data-q></div>`;
+    card.dataset.card = c.key;
+    card.style.setProperty("--tc", c.color);
+    card.innerHTML = `<div class="wt"><span class="num">${c.num}</span>${esc(c.title)}</div><div class="wn"><b data-n>0</b>/${countHere.get(c.key) || 0} here · ${c.evidence.length} in project${c.note ? " · " + c.note : ""}</div>`;
     card.addEventListener("click", () => { setView("summary"); });
     cards.appendChild(card);
   }
 }
-function wallPulse(theme) {
-  const card = $("wall").querySelector(`[data-theme="${theme.id}"]`);
+function wallPulse(c) {
+  const card = $("wall").querySelector(`[data-card="${c.key}"]`);
   if (!card) return;
   const n = card.querySelector("[data-n]");
   n.textContent = +n.textContent + 1;
   card.classList.remove("pulse"); void card.offsetWidth; card.classList.add("pulse");
 }
-function cardPos(id) {
+function cardPos(key) {
   const wall = $("wall");
   if (wall.hidden) return null;
-  const card = wall.querySelector(`[data-theme="${id}"]`);
+  const card = wall.querySelector(`[data-card="${key}"]`);
   if (!card) return null;
   const r = card.getBoundingClientRect();
   if (r.bottom < 0 || r.top > window.innerHeight) return null;
   return { x: r.left, y: r.top + 14 };
 }
+
+/* ---------- lens guide ---------- */
+function renderGuide() {
+  $("lensCompare").innerHTML = `<div><b>Trends · Tone · References</b>Count and match words in your browser. Free and instant, one source at a time. They see patterns in the wording but don't understand it.</div>
+    <div><b>Insights · UXR</b>Claude reads the whole project and explains it, with quotes checked against your text. A few cents per run, 20 seconds to 2 minutes. Insights is for anyone making sense of what they read; UXR is for research about people.</div>`;
+  const g = $("lensGuide");
+  g.textContent = "";
+  for (const l of LENSES) {
+    const c = document.createElement("article");
+    c.className = "lens-card";
+    c.style.setProperty("--lc", l.accent);
+    c.innerHTML = `<header><h4>${l.name}</h4><span class="tag">${l.claude ? "Claude" : "in your browser"}</span></header>
+      <p class="q">${esc(l.question)}</p>
+      <ul>${l.finds.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
+      <dl><dt>Best for</dt><dd>${esc(l.best)}</dd><dt>How</dt><dd>${esc(l.how)}</dd><dt>Cost</dt><dd>${esc(l.cost)}</dd><dt>Covers</dt><dd>${esc(l.scope)}</dd></dl>
+      <p class="limit">${esc(l.limit)}</p>`;
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "try"; b.textContent = `Run ${l.name}`;
+    b.addEventListener("click", () => { closeHelp(); chooseLens(l.id); });
+    c.appendChild(b);
+    g.appendChild(c);
+  }
+}
+function openHelp() { pauseForAway(); renderGuide(); $("helpSheet").hidden = false; }
+function closeHelp() { $("helpSheet").hidden = true; resumeIfAway(); }
 
 /* ---------- views ---------- */
 function setView(v) {
@@ -393,12 +465,14 @@ function hud(p) {
   stats.textContent = "";
   const add = (html, cls, color) => { const s = document.createElement("span"); s.className = cls; if (color) s.style.setProperty("--c", color); s.innerHTML = html; stats.appendChild(s); };
   if (p.lens === "scan") {
-    const r = ui.themeRun;
+    const r = ui.aiRun;
     const secs = r ? Math.round((performance.now() - r.started) / 1000) : 0;
     add(`Claude is reading ${project.sources.length} source${project.sources.length === 1 ? "" : "s"}`, "stat");
     add(`<b>${secs}s</b>`, "stat");
-    if (r && r.chars) add(`writing themes <b>${(r.chars / 1000).toFixed(1)}k</b> chars`, "hchip", "#46f08a");
-    else add("thinking…", "hchip", "#46f08a");
+    const col = r ? LENS_ACCENT[r.lens] : "#46f08a";
+    if (r) add(AI_NAME[r.lens], "hchip", col);
+    if (r && r.chars) add(`writing <b>${(r.chars / 1000).toFixed(1)}k</b> chars`, "hchip", col);
+    else add("thinking…", "hchip", col);
     return;
   }
   add(`S${project.active + 1} read <b>${p.idx.toLocaleString("en-US")}</b>/${p.total.toLocaleString("en-US")}`, "stat");
@@ -410,12 +484,14 @@ function hud(p) {
     const top = [...p.seen.values()].sort((a, b) => b.n - a.n || a.entry.rank - b.entry.rank).slice(0, 6);
     add(`keywords <b>${p.seen.size}</b>`, "stat");
     for (const s of top) add(`${esc(s.entry.term)} <b>×${s.n}</b>`, "hchip", "#33e1ff");
-  } else if (p.lens === "themes") {
-    add(`${project.themes.themes.length} themes`, "stat");
+  } else if (isAI(p.lens)) {
+    const r = project.ai[p.lens];
+    add(p.lens === "uxr" ? `${r.themes.length} themes` : `${r.keyPoints.length} key points · ${r.claims.length} claims`, "stat");
     const wall = $("wall");
-    for (const c of [...wall.querySelectorAll(".wcard")].slice(0, 5)) {
-      const id = +c.dataset.theme, t = project.themes.themes[id];
-      add(`${id + 1} <b>${c.querySelector("[data-n]").textContent}</b>`, "hchip", t.color);
+    const byKey = new Map(wallCards().map((c) => [c.key, c]));
+    for (const el of [...wall.querySelectorAll(".wcard")].slice(0, 5)) {
+      const c = byKey.get(el.dataset.card);
+      if (c) add(`${c.num} <b>${el.querySelector("[data-n]").textContent}</b>`, "hchip", c.color);
     }
   } else {
     add(`mood`, "stat");
@@ -465,9 +541,12 @@ async function doExport(kind) {
     else if (kind === "terms") {
       if (!project.sources.some((s) => s.ran.trends)) { toast("Run the Trends lens first; terms.csv comes from it."); return; }
       await saveFile(`${base}-terms.csv`, termsCsv(project));
-    } else if (kind === "themes") {
-      if (!project.themes) { toast("Run the Themes lens first; themes.csv comes from it."); return; }
-      await saveFile(`${base}-themes.csv`, themesCsv(project));
+    } else if (kind === "insights") {
+      if (!project.ai.insights && !project.asks.length) { toast("Run the Insights lens first; insights.csv comes from it."); return; }
+      await saveFile(`${base}-insights.csv`, insightsCsv(project));
+    } else if (kind === "uxr") {
+      if (!project.ai.uxr) { toast("Run the UXR lens first; uxr.csv comes from it."); return; }
+      await saveFile(`${base}-uxr.csv`, uxrCsv(project));
     } else await saveFile(`${base}-csv.zip`, await zipAll(project, base), "application/zip");
   } catch (e) {
     toast(e && e.message ? `Export failed: ${e.message}` : "Export failed");
@@ -485,6 +564,10 @@ $("play").addEventListener("click", () => { setView("doc"); setPlaying(!crawler.
 $("speed").addEventListener("change", (e) => { crawler.speed = parseFloat(e.target.value); });
 $("skip").addEventListener("click", () => { if (project.sources.length && !crawler.done && ui.lens !== "scan") { setView("doc"); crawler.skip(); } });
 $("addSource").addEventListener("click", openSheet);
+$("helpBtn").addEventListener("click", openHelp);
+$("closeHelp").addEventListener("click", closeHelp);
+$("helpSheet").addEventListener("click", (e) => { if (e.target === $("helpSheet")) closeHelp(); });
+document.querySelectorAll("[data-lens]").forEach((b) => { const l = LENS[b.dataset.lens]; if (l) b.title = `${l.name}: ${l.question}`; });
 const closeSheet = () => { $("sheet").hidden = true; resumeIfAway(); };
 $("closeSheet").addEventListener("click", closeSheet);
 $("sheet").addEventListener("click", (e) => { if (e.target === $("sheet")) closeSheet(); });
@@ -497,11 +580,11 @@ $("pasteForm").addEventListener("submit", (e) => {
 });
 $("fileIn").addEventListener("change", (e) => { const fs = [...e.target.files]; if (fs.length) openFiles(fs); e.target.value = ""; });
 document.querySelectorAll("[data-sample]").forEach((b) => b.addEventListener("click", () => openSample(b.dataset.sample)));
-$("themesRun").addEventListener("click", runThemes);
-$("themesCancel").addEventListener("click", () => { $("themesSheet").hidden = true; if (project.themes) startLens("themes"); });
-$("themesSheet").addEventListener("click", (e) => { if (e.target === $("themesSheet")) $("themesSheet").hidden = true; });
-$("themesShowOld").addEventListener("click", () => { $("themesSheet").hidden = true; startLens("themes"); });
-$("rerunThemes").addEventListener("click", openThemesSheet);
+$("aiRun").addEventListener("click", runAI);
+$("aiCancel").addEventListener("click", () => { $("aiSheet").hidden = true; });
+$("aiSheet").addEventListener("click", (e) => { if (e.target === $("aiSheet")) $("aiSheet").hidden = true; });
+$("aiShowOld").addEventListener("click", () => { $("aiSheet").hidden = true; startLens(ui.sheetLens); });
+$("rerunAi").addEventListener("click", () => openAiSheet(ui.lens));
 
 const drop = $("drop");
 ["dragenter", "dragover"].forEach((ev) => window.addEventListener(ev, (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { e.preventDefault(); drop.classList.add("over"); } }));
@@ -520,13 +603,15 @@ exportMenu.querySelectorAll("[data-export]").forEach((b) => b.addEventListener("
 
 window.addEventListener("keydown", (e) => {
   if (e.target.closest("input, textarea, select, [contenteditable]")) return;
-  if (e.key === "Escape") { if (!$("sheet").hidden) closeSheet(); $("themesSheet").hidden = true; exportMenu.hidden = true; return; }
-  if (!$("sheet").hidden || !$("themesSheet").hidden) return;
+  if (e.key === "Escape") { if (!$("sheet").hidden) closeSheet(); if (!$("helpSheet").hidden) closeHelp(); $("aiSheet").hidden = true; exportMenu.hidden = true; return; }
+  if (!$("sheet").hidden || !$("aiSheet").hidden || !$("helpSheet").hidden) return;
+  if (e.key === "?") { openHelp(); return; }
   if (e.code === "Space") { e.preventDefault(); setView("doc"); setPlaying(!crawler.playing); }
   else if (e.key === "1") chooseLens("trends");
   else if (e.key === "2") chooseLens("tone");
-  else if (e.key === "3") chooseLens("themes");
-  else if (e.key === "4") chooseLens("references");
+  else if (e.key === "3") chooseLens("insights");
+  else if (e.key === "4") chooseLens("uxr");
+  else if (e.key === "5") chooseLens("references");
 });
 let resizeTimer = 0;
 // Redraw the summary only when the width changes. On phones, scrolling shows and hides
@@ -556,11 +641,13 @@ setHead();
 (async () => {
   const params = new URLSearchParams(location.search);
   const saved = await loadProject();
+  if (!saved) setTimeout(() => toast("New here? Tap the ? next to the lenses to see what each one does."), 2500);
   if (saved && saved.sources && saved.sources.length) {
     try {
       project.sources = saved.sources.map((s) => makeSource(s.doc, s.key, s.ran));
-      project.themes = saved.themes || null;
-      project.question = saved.question || "";
+      project.ai = { insights: saved.ai?.insights || null, uxr: upgradeUxr(saved.ai?.uxr || saved.themes) };
+      project.asks = saved.asks || [];
+      project.questions = saved.questions || { insights: "", uxr: saved.question || "" };
       project.active = Math.min(saved.active || 0, project.sources.length - 1);
     } catch (e) { console.error(e); project.sources = []; }
   }

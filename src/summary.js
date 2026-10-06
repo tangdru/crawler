@@ -5,6 +5,8 @@
 import { ENTITY_TYPES } from "./references.js";
 import { EMOTION_KEYS } from "./tone.js";
 import { combine } from "./tone.js";
+import { SUPPORT, KINDS, money } from "./ai.js";
+import { LENS } from "./lenses.js";
 
 const C = {
   surface: "#111119", grid: "#24253a", base: "#3a3b52",
@@ -44,10 +46,13 @@ function barPathLeft(x1, y, len, h, r = 4) {
 }
 
 export class Summary {
-  constructor(root, tip, { jump }) {
+  constructor(root, tip, { jump, ask, askCost, runAI }) {
     this.root = root;
     this.tip = tip;
     this.jump = jump;
+    this.ask = ask;
+    this.askCost = askCost;
+    this.runAI = runAI;
   }
 
   hover(node, html, onClick) {
@@ -86,17 +91,21 @@ export class Summary {
     return Math.max(240, Math.min(col - 34, 1100));
   }
 
+  // A lens section opens with the question that lens answers, so each part of the
+  // summary says what it is for.
   section(title, sub) {
     const h = document.createElement("div");
     h.className = "sec-head";
-    h.innerHTML = `<h2>${esc(title)}</h2>${sub ? `<p class="sub">${esc(sub)}</p>` : ""}`;
+    const lens = LENS[title.toLowerCase()];
+    const what = lens ? `<p class="what">${esc(lens.question)}<span>${lens.claude ? "Claude" : "counted in your browser"}</span></p>` : "";
+    h.innerHTML = `<h2>${esc(title)}</h2>${what}${sub ? `<p class="sub">${esc(sub)}</p>` : ""}`;
     this.root.appendChild(h);
     this.grid = document.createElement("div");
     this.grid.className = "panels";
     this.root.appendChild(this.grid);
   }
 
-  // project: { sources, active, themes }. Panels add up as lenses run.
+  // project: { sources, active, ai: { insights, uxr }, asks }. Panels add up as lenses run.
   render(project) {
     this.project = project;
     const view = project.sources[project.active];
@@ -106,13 +115,13 @@ export class Summary {
     this.root.textContent = "";
     const anySource = srcs.some((s) => s.ran.references || s.ran.trends || s.ran.tone);
     const any = ran.references || ran.trends || ran.tone;
+    const found = anySource || project.ai.insights || project.ai.uxr;
     const head = document.createElement("header");
     head.className = "sum-head";
     head.innerHTML = `<div class="eyebrow">Summary · ${n} source${n === 1 ? "" : "s"}</div>
-      <h2>${project.themes || anySource ? "What the crawler found" : "Run a crawl to build the summary"}</h2>
-      <p class="sub">${project.themes || anySource ? "Sections follow the lens order: Trends, Tone, Themes, References. Each lens you run adds its section; Themes cover the whole project, the others report on the source you're viewing." : "Pick a lens and press Play. Each lens you run adds its section here, and nothing is lost when you switch."}</p>`;
+      <h2>${found ? "What the crawler found" : "Run a crawl to build the summary"}</h2>
+      <p class="sub">${found ? "Sections follow the lens order: Trends, Tone, Insights, UXR, References. Each lens you run adds its section; Insights and UXR cover the whole project, the others report on the source you're viewing." : "Pick a lens and press Play. Each lens you run adds its section here, and nothing is lost when you switch. You can ask your sources a question below at any time."}</p>`;
     this.root.appendChild(head);
-    if (!project.themes && !anySource) return;
 
     const scope = n > 1 ? `S${project.active + 1} · ${model.title}. Switch sources with the chips at the top.` : "";
 
@@ -138,7 +147,8 @@ export class Summary {
       if (withTone.length >= 2) this.moodBySource(project, withTone);
     }
 
-    if (project.themes) this.themesSection(project);
+    this.insightsSection(project);
+    if (project.ai.uxr) this.uxrSection(project);
 
     if (any) {
       this.section("References", `Collected by the reference pass, which runs under every lens. ${scope}`);
@@ -149,52 +159,231 @@ export class Summary {
     }
   }
 
-  /* ---------- project level ---------- */
-  themesSection(project) {
-    const res = project.themes;
+  /* ---------- project level: Claude ---------- */
+  // Section intro for a Claude result: coverage, stale sources, removed quotes.
+  aiNote(res, project, name) {
     const keys = new Set(project.sources.map((s) => s.key));
     const covered = res.sourceKeys.filter((k) => keys.has(k)).length;
     const missing = project.sources.filter((s) => !res.sourceKeys.includes(s.key)).length;
-    const notes = [];
-    if (missing) notes.push(`${missing} source${missing === 1 ? " was" : "s were"} added after this run; run Themes again to include ${missing === 1 ? "it" : "them"}.`);
-    if (res.dropped) notes.push(`${res.dropped} quote${res.dropped === 1 ? "" : "s"} couldn't be found word for word in the text and ${res.dropped === 1 ? "was" : "were"} removed.`);
-    this.section("Themes", `Across ${covered} source${covered === 1 ? "" : "s"}. Found by Claude, then checked by this page: every quote below appears word for word in its source. ${notes.join(" ")}`);
+    const notes = [`Across ${covered} source${covered === 1 ? "" : "s"}. Found by Claude, then checked by this page: every quote below appears word for word in its source; click one to read it in context.`];
+    if (missing) notes.push(`${missing} source${missing === 1 ? " was" : "s were"} added after this run; run ${name} again to include ${missing === 1 ? "it" : "them"}.`);
+    if (res.dropped) notes.push(`${res.dropped} quote${res.dropped === 1 ? "" : "s"} couldn't be found word for word and ${res.dropped === 1 ? "was" : "were"} removed.`);
+    return notes.join(" ");
+  }
 
+  srcIndex() { return new Map(this.project.sources.map((s, i) => [s.key, i])); }
+
+  // Clickable verified quotes. `stance` shows For/Against labels (tensions, agreement).
+  evidenceList(evs, { stance = false, labels = ["For", "Against"] } = {}) {
+    const idx = this.srcIndex();
+    const ul = document.createElement("ul"); ul.className = "evidence";
+    const list = evs.filter((e) => idx.has(e.sourceKey));
+    const ordered = stance ? [...list].sort((a, b) => (a.stance > b.stance ? -1 : 1)) : list;
+    for (const e of ordered) {
+      const i = idx.get(e.sourceKey);
+      const li = document.createElement("li");
+      li.tabIndex = 0;
+      li.innerHTML = `${stance ? `<span class="stance ${e.stance}">${e.stance === "contradicts" ? labels[1] : labels[0]}</span>` : ""}<q>${esc(e.quote)}</q> <span class="src">S${i + 1} · ${esc(this.project.sources[i].model.title.slice(0, 40))}</span>`;
+      const go = () => this.jump({ sourceKey: e.sourceKey, sentence: e.sentence });
+      li.addEventListener("click", go);
+      li.addEventListener("keydown", (ev) => { if (ev.key === "Enter") go(); });
+      ul.appendChild(li);
+    }
+    return ul;
+  }
+
+  // A finding card: optional number and swatch, title, chips (strings or {text, color}), summary, quotes.
+  card(parent, { num, color, title, chips = [], text, extra, evs, stance, labels }) {
+    const card = document.createElement("article");
+    card.className = "theme-card";
+    const chipHtml = chips.filter(Boolean).map((c) => typeof c === "string" ? `<span class="chip">${esc(c)}</span>` : `<span class="chip" style="border-color:${c.color}"><i class="dot" style="background:${c.color}"></i>${esc(c.text)}</span>`).join("");
+    card.innerHTML = `<header>${color ? `<i class="sw" style="background:${color}"></i>` : ""}${num != null ? `<span class="num">${num}</span>` : ""}<h4>${esc(title)}</h4></header>
+      ${chipHtml ? `<div class="chips">${chipHtml}</div>` : ""}${text ? `<p class="tsum">${esc(text)}</p>` : ""}${extra ? `<p class="tsum">${extra}</p>` : ""}`;
+    if (evs && evs.length) card.appendChild(this.evidenceList(evs, { stance, labels }));
+    parent.appendChild(card);
+    return card;
+  }
+  cards(title, sub) {
+    const body = this.panel(title, sub, true);
+    const wrap = document.createElement("div"); wrap.className = "theme-cards"; body.appendChild(wrap);
+    return wrap;
+  }
+  sourcesOf(evs) {
+    const n = new Set(evs.map((e) => e.sourceKey)).size, total = this.project.sources.length;
+    return total > 1 ? `${n} of ${total} sources` : "";
+  }
+
+  /* ----- Insights: plain-language analysis for any reader ----- */
+  insightsSection(project) {
+    const res = project.ai.insights;
+    this.section("Insights", res ? this.aiNote(res, project, "Insights") : "A plain-language read of your sources by Claude: the gist, the main claims and how well each is backed, who says what, and what's missing. Every point comes with quotes checked against your text.");
+    if (!res) {
+      const body = this.panel("Find insights", "", true);
+      body.innerHTML = `<p class="overview">Not run yet. It takes 20 seconds to 2 minutes and costs a few cents on your Anthropic account.</p>`;
+      const b = document.createElement("button"); b.type = "button"; b.className = "primary cta"; b.textContent = "Find insights with Claude";
+      b.addEventListener("click", () => this.runAI("insights"));
+      body.appendChild(b);
+    } else {
+      const gist = this.panel("The gist", res.question ? `You're reading for: ${res.question}` : "", true);
+      const p = document.createElement("p"); p.className = "overview"; p.textContent = res.gist; gist.appendChild(p);
+      const kp = this.cards("Key points", "The points that matter most, each with the passages that make it.");
+      for (const k of res.keyPoints) this.card(kp, { num: k.id + 1, color: k.color, title: k.text, chips: [this.sourcesOf(k.evidence)], evs: k.evidence });
+      if (res.claims.length) this.claimsPanel(res);
+      if (res.voices.length) this.voicesPanel(res);
+      if (res.agreement.length) {
+        const ag = this.cards("Where the sources agree and disagree", "Topics more than one source covers. Quotes are marked by which side they take.");
+        const STATUS = { agree: { text: "Agree", color: "#3987e5" }, disagree: { text: "Disagree", color: "#e66767" }, mixed: { text: "Mixed", color: "#c98500" } };
+        for (const a of res.agreement) this.card(ag, { title: a.topic, chips: [STATUS[a.status], this.sourcesOf(a.evidence)], text: a.summary, evs: a.evidence, stance: a.status !== "agree", labels: ["Side A", "Side B"] });
+      }
+      if (res.missing.length) {
+        const body = this.panel("What's missing or one-sided", "Claude's read of what a careful reader would notice is absent. There's nothing to quote for something that isn't there, so these aren't checked against the text.", true);
+        const ul = document.createElement("ul"); ul.className = "plain-list";
+        ul.innerHTML = res.missing.map((m) => `<li><b>${esc(m.gap)}</b>${m.why ? ` <span>${esc(m.why)}</span>` : ""}</li>`).join("");
+        body.appendChild(ul);
+      }
+    }
+    this.askPanel(project);
+  }
+
+  // Claims chart: one bar per kind (fact, opinion, prediction), split by how the text backs it.
+  claimsPanel(res) {
+    const body = this.panel("Claims and how well they're backed", "The main claims, sorted by kind, and how the text itself supports each: Backed (cites data, a source or an example), Hedged (qualified), or Asserted (said confidently with nothing behind it). This rates the support in the text, not whether a claim is true.", true);
+    const kinds = Object.keys(KINDS).filter((k) => res.claims.some((c) => c.kind === k));
+    const sup = Object.keys(SUPPORT);
+    const W = this.width(body), labelW = 92, valW = 30, bh = 18, gap = 12, top = 26;
+    const H = top + kinds.length * (bh + gap);
+    const s = svg(W, H);
+    const max = Math.max(1, ...kinds.map((k) => res.claims.filter((c) => c.kind === k).length));
+    const span = W - labelW - valW;
+    // legend
+    let lx = labelW;
+    for (const k of sup) {
+      el(s, "rect", { x: lx, y: 4, width: 9, height: 9, rx: 2, fill: SUPPORT[k].color });
+      el(s, "text", { x: lx + 14, y: 12, class: "t-axis" }, SUPPORT[k].label);
+      lx += 14 + SUPPORT[k].label.length * 7 + 18;
+    }
+    kinds.forEach((k, i) => {
+      const y = top + i * (bh + gap);
+      el(s, "text", { x: labelW - 10, y: y + bh - 5, "text-anchor": "end", class: "t-label" }, KINDS[k] + "s");
+      let x = labelW;
+      const all = res.claims.filter((c) => c.kind === k);
+      sup.forEach((sp, j) => {
+        const these = all.filter((c) => c.support === sp);
+        if (!these.length) return;
+        const len = (these.length / max) * span;
+        const last = !sup.slice(j + 1).some((q) => all.some((c) => c.support === q));
+        const seg = el(s, "path", { d: last ? barPath(x, y, len - 1, bh) : `M${x},${y}h${Math.max(0.5, len - 2)}v${bh}h-${Math.max(0.5, len - 2)}z`, fill: SUPPORT[sp].color });
+        if (len > 18) el(s, "text", { x: x + (len - 2) / 2, y: y + bh - 5, "text-anchor": "middle", class: "t-dark", "pointer-events": "none" }, these.length);
+        this.hover(seg, `<b>${KINDS[k]}s · ${SUPPORT[sp].label.toLowerCase()}</b>: ${these.length}<br>${these.slice(0, 4).map((c) => `· ${esc(c.text.slice(0, 90))}`).join("<br>")}${these.length > 4 ? "<br>…" : ""}`,
+          () => this.jump({ sourceKey: these[0].evidence[0].sourceKey, sentence: these[0].evidence[0].sentence }));
+        x += len;
+      });
+      el(s, "text", { x: x + 6, y: y + bh - 5, class: "t-value" }, all.length);
+    });
+    el(s, "line", { x1: labelW, x2: labelW, y1: top - 4, y2: H - gap + 4, stroke: C.base, "stroke-width": 1 });
+    body.appendChild(s);
+    const wrap = document.createElement("div"); wrap.className = "theme-cards claims-cards"; body.appendChild(wrap);
+    const order = { asserted: 0, hedged: 1, backed: 2 };
+    for (const c of [...res.claims].sort((a, b) => order[a.support] - order[b.support])) {
+      this.card(wrap, { title: c.text, chips: [{ text: SUPPORT[c.support].label, color: SUPPORT[c.support].color }, KINDS[c.kind]], text: c.note, evs: c.evidence });
+    }
+  }
+
+  voicesPanel(res) {
+    const body = this.panel("Who says what", "People and organisations whose views appear, and how many passages give them space.", true);
+    this.hbars(body, res.voices.map((v) => ({
+      label: v.name, value: v.evidence.length, color: C.blue,
+      tip: `<b>${esc(v.name)}</b>${v.role ? ` · ${esc(v.role)}` : ""}<br>${esc(v.position)}`,
+      onClick: () => this.jump({ sourceKey: v.evidence[0].sourceKey, sentence: v.evidence[0].sentence })
+    })), { fmt: (n) => `${n} quote${n === 1 ? "" : "s"}` });
+    const wrap = document.createElement("div"); wrap.className = "theme-cards"; body.appendChild(wrap);
+    for (const v of res.voices) this.card(wrap, { title: v.name, chips: [v.role, this.sourcesOf(v.evidence)], text: v.position, evs: v.evidence });
+  }
+
+  askPanel(project) {
+    const body = this.panel("Ask your sources", "Claude answers only from these sources, with quotes checked against the text. If the sources don't cover it, it says so.", true);
+    const form = document.createElement("form"); form.className = "ask-form";
+    const est = this.askCost ? this.askCost() : null;
+    form.innerHTML = `<div class="inline"><input type="text" name="q" placeholder="e.g. What do opponents say about the cost?" autocomplete="off" aria-label="Your question"><button type="submit" class="primary">Ask</button></div>
+      <p class="hint" data-status>${est ? `About ${money(est.dollars)} per question; follow-ups within 5 minutes reuse the cached sources and cost less.` : ""}</p>`;
+    body.appendChild(form);
+    const status = form.querySelector("[data-status]");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const q = form.q.value.trim();
+      if (!q) { status.textContent = "Type a question first."; return; }
+      form.querySelectorAll("input, button").forEach((x) => { x.disabled = true; });
+      status.classList.remove("warn");
+      status.innerHTML = `<span class="spin" aria-hidden="true"></span> Claude is reading your sources…`;
+      try {
+        await this.ask(q);
+        const y = window.scrollY;
+        this.render(this.project);
+        window.scrollTo(0, y);
+      } catch (err) {
+        form.querySelectorAll("input, button").forEach((x) => { x.disabled = false; });
+        status.classList.add("warn");
+        status.textContent = err.message || String(err);
+      }
+    });
+    const keys = new Set(project.sources.map((s) => s.key));
+    for (const a of project.asks || []) {
+      const box = document.createElement("article"); box.className = "answer";
+      const partial = a.sourceKeys && a.sourceKeys.some((k) => !keys.has(k)) || project.sources.some((s) => a.sourceKeys && !a.sourceKeys.includes(s.key));
+      box.innerHTML = `<h4>${esc(a.question)}</h4><p class="overview">${esc(a.answer)}</p>${!a.covered ? '<p class="hint">Not covered by these sources.</p>' : ""}${partial ? '<p class="hint">Asked when the project had different sources.</p>' : ""}`;
+      for (const pt of a.points) {
+        if (!pt.evidence.length) continue;
+        const d = document.createElement("div"); d.className = "apoint";
+        d.innerHTML = `<p>${esc(pt.text)}</p>`;
+        d.appendChild(this.evidenceList(pt.evidence, { stance: pt.evidence.some((e) => e.stance === "contradicts") }));
+        box.appendChild(d);
+      }
+      body.appendChild(box);
+    }
+  }
+
+  /* ----- UXR: research synthesis ----- */
+  uxrSection(project) {
+    const res = project.ai.uxr;
+    this.section("UXR", this.aiNote(res, project, "UXR"));
     const ov = this.panel("Key findings", res.question ? `Research question: ${res.question}` : "", true);
     const p = document.createElement("p"); p.className = "overview"; p.textContent = res.overview; ov.appendChild(p);
 
-    const idx = new Map(project.sources.map((s, i) => [s.key, i]));
-    const body = this.panel("Themes and evidence", "Most important first. Click a quote to read it in context.", true);
-    const wrap = document.createElement("div"); wrap.className = "theme-cards"; body.appendChild(wrap);
+    const n = project.sources.length;
+    const th = this.cards("Themes and evidence", "Most important first. Tensions show quotes from both sides.");
     for (const t of res.themes) {
-      const evs = t.evidence.filter((e) => idx.has(e.sourceKey));
-      const srcCount = new Set(evs.map((e) => e.sourceKey)).size;
-      const card = document.createElement("article");
-      card.className = "theme-card";
-      card.innerHTML = `<header><i class="sw" style="background:${t.color}"></i><span class="num">${t.id + 1}</span>
-          <h4>${esc(t.title)}</h4></header>
-        <div class="chips">${t.kind === "tension" ? '<span class="chip tension">Tension</span>' : ""}<span class="chip">${esc(t.prevalence)}</span><span class="chip">${srcCount} of ${project.sources.length} source${project.sources.length === 1 ? "" : "s"}</span><span class="chip">${evs.length} quote${evs.length === 1 ? "" : "s"}</span></div>
-        <p class="tsum">${esc(t.summary)}</p>`;
-      const ul = document.createElement("ul"); ul.className = "evidence";
-      const ordered = t.kind === "tension" ? [...evs].sort((a, b) => (a.stance > b.stance ? -1 : 1)) : evs;
-      for (const e of ordered) {
-        const i = idx.get(e.sourceKey);
-        const li = document.createElement("li");
-        li.tabIndex = 0;
-        li.innerHTML = `${t.kind === "tension" ? `<span class="stance ${e.stance}">${e.stance === "contradicts" ? "Against" : "For"}</span>` : ""}<q>${esc(e.quote)}</q> <span class="src">S${i + 1} · ${esc(project.sources[i].model.title.slice(0, 40))}</span>`;
-        const go = () => this.jump({ sourceKey: e.sourceKey, sentence: e.sentence });
-        li.addEventListener("click", go);
-        li.addEventListener("keydown", (ev) => { if (ev.key === "Enter") go(); });
-        ul.appendChild(li);
-      }
-      card.appendChild(ul);
-      wrap.appendChild(card);
+      const evs = t.evidence.filter((e) => this.srcIndex().has(e.sourceKey));
+      this.card(th, { num: t.id + 1, color: t.color, title: t.title, chips: [t.kind === "tension" ? { text: "Tension", color: "#e66767" } : null, t.prevalence, this.sourcesOf(evs), `${evs.length} quote${evs.length === 1 ? "" : "s"}`], text: t.summary, evs, stance: t.kind === "tension" });
     }
-    if (project.sources.length > 1) this.themeMatrix(project, idx);
+    if (n > 1) this.themeMatrix(project, res);
+
+    const SEV = { high: "#e66767", medium: "#c98500", low: "#8c8a9a" };
+    const pains = (res.painPoints || []).slice().sort((a, b) => ["high", "medium", "low"].indexOf(a.severity) - ["high", "medium", "low"].indexOf(b.severity));
+    if (pains.length) {
+      const w = this.cards("Pain points", "Problems, frustrations and fears people describe, most severe first.");
+      for (const p of pains) this.card(w, { title: p.title, chips: [{ text: `${p.severity[0].toUpperCase() + p.severity.slice(1)} severity`, color: SEV[p.severity] }, this.sourcesOf(p.evidence)], text: p.summary, evs: p.evidence });
+    }
+    if (res.segments?.length) {
+      const w = this.cards("Who's in these sources", "Groups of people the evidence supports (proto-personas), with what each needs.");
+      for (const g of res.segments) this.card(w, { title: g.name, text: g.description, extra: g.needs ? `<b>Needs:</b> ${esc(g.needs)}` : "", evs: g.evidence });
+    }
+    if (res.jobs?.length) {
+      const w = this.cards("Jobs to be done", "What people are trying to get done, in their situation.");
+      for (const j of res.jobs) this.card(w, { title: j.job, evs: j.evidence });
+    }
+    if (res.opportunities?.length) {
+      const w = this.cards("Opportunities", "Where the findings point.");
+      for (const o of res.opportunities) this.card(w, { title: o.title, text: o.rationale, evs: o.evidence });
+    }
+    if (res.openQuestions?.length) {
+      const body = this.panel("Open questions", "What the sources leave unresolved and is worth finding out next. These are Claude's read, so they carry no quotes.", true);
+      const ul = document.createElement("ul"); ul.className = "plain-list";
+      ul.innerHTML = res.openQuestions.map((q) => `<li><b>${esc(q.question)}</b>${q.why ? ` <span>${esc(q.why)}</span>` : ""}</li>`).join("");
+      body.appendChild(ul);
+    }
   }
 
-  themeMatrix(project, idx) {
-    const res = project.themes;
+  themeMatrix(project, res) {
     const body = this.panel("Which sources support which theme", "Quotes per theme in each source. Empty cells mean the theme doesn't appear there. Click a cell to read the first quote.", true);
     const W = this.width(body);
     const n = project.sources.length;

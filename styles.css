@@ -297,3 +297,41 @@ tbody tr.on td { color: var(--ink-hi); background: rgba(255,255,255,.04); }
 /* numbers and headers never split mid-word; wide tables scroll inside their box */
 th, td.num { overflow-wrap: normal; white-space: nowrap; }
 .twrap table { min-width: 520px; }
+
+/* ---------- Insights, UXR and Ask ---------- */
+.chip .dot { display: inline-block; width: 7px; height: 7px; border-radius: 1px; margin-right: 5px; vertical-align: 0; }
+.plain-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.plain-list li { background: var(--panel-2); border-radius: 3px; padding: 9px 11px; font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+.plain-list li b { color: var(--ink-hi); font-weight: 600; display: block; }
+.claims-cards { margin-top: 14px; }
+.cta { margin-top: 12px; }
+.ask-form { display: grid; gap: 6px; margin-bottom: 6px; }
+.ask-form .hint { display: flex; gap: 8px; align-items: center; margin: 0; }
+.answer { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 14px; display: grid; gap: 10px; }
+.answer h4 { margin: 0; font: 600 15px/1.35 var(--f-body); color: var(--ink-hi); }
+.answer .hint { margin: 0; }
+.apoint { background: var(--panel-2); border-radius: 4px; padding: 10px 12px; }
+.apoint p { margin: 0 0 8px; font-size: 13.5px; color: var(--ink-hi); }
+
+/* ---------- lens guide ---------- */
+.help-btn { width: 30px; padding: 0; border-radius: 50%; font: 600 13px var(--f-mono); color: var(--ink-2); margin-left: 6px; }
+.help-btn:hover { color: var(--ink-hi); }
+.sheet .card.wide-card { width: min(980px, 100%); }
+.lens-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.lens-compare > div { background: var(--panel-2); border-radius: 4px; padding: 10px 12px; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+.lens-compare b { color: var(--ink-hi); display: block; margin-bottom: 2px; }
+.lens-guide { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 10px; }
+.lens-card { background: var(--panel-2); border-radius: 4px; padding: 12px 14px; box-shadow: inset 0 3px 0 var(--lc); display: grid; gap: 8px; align-content: start; }
+.lens-card header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.lens-card h4 { margin: 0; font: 600 16px var(--f-body); color: var(--ink-hi); }
+.lens-card .tag { font: 11px var(--f-mono); color: var(--ink-dim); white-space: nowrap; }
+.lens-card .q { margin: 0; font: 500 15px/1.35 var(--f-display); color: var(--ink-hi); }
+.lens-card ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.lens-card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12.5px; }
+.lens-card dt { color: var(--ink-dim); }
+.lens-card dd { margin: 0; color: var(--ink-2); }
+.lens-card .limit { margin: 0; font-size: 12px; color: var(--ink-dim); font-style: italic; }
+.lens-card .try { justify-self: start; font-size: 12px; }
+.sec-head .what { margin: 2px 0 6px; font-size: 14px; color: var(--ink-hi); max-width: 80ch; }
+.sec-head .what span { color: var(--ink-dim); font: 11px var(--f-mono); margin-left: 8px; }
+@media (max-width: 700px) { .lens-compare { grid-template-columns: 1fr; } }

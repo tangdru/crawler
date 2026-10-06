@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Reference Crawler</title>
-<meta name="description" content="Watch a crawler read any document or web page: references, trends and tone, with summary charts and CSV export.">
+<meta name="description" content="Watch a crawler read any document or web page: references, trends, tone, plain-language insights and UX research synthesis, with summary charts and CSV export.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;600&family=Fraunces:opsz,wght@9..144,500&display=swap">
@@ -18,9 +18,11 @@
     <div class="seg" role="radiogroup" aria-label="Lens">
       <button type="button" role="radio" data-lens="trends" aria-checked="true">Trends</button>
       <button type="button" role="radio" data-lens="tone" aria-checked="false">Tone</button>
-      <button type="button" role="radio" data-lens="themes" aria-checked="false">Themes</button>
+      <button type="button" role="radio" data-lens="insights" aria-checked="false" title="Claude: the gist, claims and how well they're backed, who says what">Insights</button>
+      <button type="button" role="radio" data-lens="uxr" aria-checked="false" title="Claude: UX research synthesis: themes, pain points, personas, jobs to be done">UXR</button>
       <button type="button" role="radio" data-lens="references" aria-checked="false">References</button>
     </div>
+    <button type="button" id="helpBtn" class="help-btn" aria-label="What do the lenses do?" title="What do the lenses do?">?</button>
   </div>
   <div class="ctl">
     <button id="play" type="button">Pause</button>
@@ -39,7 +41,8 @@
         <button type="button" data-export="entities">entities.csv <span>every reference found</span></button>
         <button type="button" data-export="sentences">sentences.csv <span>one row per sentence</span></button>
         <button type="button" data-export="terms">terms.csv <span>needs a Trends crawl</span></button>
-        <button type="button" data-export="themes">themes.csv <span>one row per theme and quote</span></button>
+        <button type="button" data-export="insights">insights.csv <span>one row per finding and quote</span></button>
+        <button type="button" data-export="uxr">uxr.csv <span>one row per finding and quote</span></button>
         <button type="button" data-export="zip">All as .zip</button>
       </div>
     </div>
@@ -58,8 +61,8 @@
   <article id="doc"></article>
 </main>
 
-<aside class="wall" id="wall" hidden aria-label="Theme wall">
-  <div class="wall-head"><span>Theme wall <span class="muted" id="wallSub"></span></span><button type="button" id="rerunThemes" class="ghost">Run again</button></div>
+<aside class="wall" id="wall" hidden aria-label="Findings wall">
+  <div class="wall-head"><span><span id="wallTitle">Theme wall</span> <span class="muted" id="wallSub"></span></span><button type="button" id="rerunAi" class="ghost">Run again</button></div>
   <div id="wallCards"></div>
 </aside>
 
@@ -110,28 +113,42 @@
       </div>
       <p class="hint">A sample replaces the current project.</p>
     </div>
-    <label class="check"><input type="checkbox" id="replaceProject"> Start a new project with this source (removes the current sources and themes)</label>
+    <label class="check"><input type="checkbox" id="replaceProject"> Start a new project with this source (removes the current sources and Claude results)</label>
     <p class="error" id="sheetError" role="alert" hidden></p>
   </div>
 </div>
 
-<div class="sheet" id="themesSheet" hidden>
-  <div class="card" role="dialog" aria-modal="true" aria-labelledby="themesTitle">
-    <h3 id="themesTitle">Find themes across your sources</h3>
-    <p class="hint" id="themesInfo"></p>
-    <ul class="theme-srcs" id="themesSources"></ul>
+<div class="sheet" id="aiSheet" hidden>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="aiTitle">
+    <h3 id="aiTitle">Find insights with Claude</h3>
+    <p class="hint" id="aiWhat"></p>
+    <p class="hint" id="aiInfo"></p>
+    <ul class="theme-srcs" id="aiSources"></ul>
     <p class="hint">To leave a source out, close this and remove it with the × on its chip above the document.</p>
     <div class="src">
-      <label for="themesQuestion">Research question (optional)</label>
-      <textarea id="themesQuestion" class="short" placeholder="e.g. What worries residents about the project, and what would win their support?"></textarea>
+      <label for="aiQuestion" id="aiQLabel">What are you reading this for? (optional)</label>
+      <textarea id="aiQuestion" class="short"></textarea>
     </div>
     <p class="hint">Every quote Claude returns is checked against your text; quotes that don't appear word for word are removed.</p>
-    <p class="hint" id="themesStale" hidden>You have themes from an earlier run that don't cover every source. <button type="button" id="themesShowOld" class="ghost inline-btn">Show the earlier themes</button></p>
-    <p class="error" id="themesError" role="alert" hidden></p>
+    <p class="hint" id="aiStale" hidden>You have results from an earlier run that don't cover every source. <button type="button" id="aiShowOld" class="ghost inline-btn">Show the earlier results</button></p>
+    <p class="error" id="aiError" role="alert" hidden></p>
     <div class="inline end">
-      <button type="button" id="themesCancel">Cancel</button>
-      <button type="button" id="themesRun" class="primary">Find themes with Claude</button>
+      <button type="button" id="aiCancel">Cancel</button>
+      <button type="button" id="aiRun" class="primary">Run with Claude</button>
     </div>
+  </div>
+</div>
+
+<div class="sheet" id="helpSheet" hidden>
+  <div class="card wide-card" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <div class="sheet-head">
+      <h3 id="helpTitle">What do the lenses do?</h3>
+      <button type="button" id="closeHelp" class="ghost">Close</button>
+    </div>
+    <p class="hint">Each lens reads your sources with a different question in mind and adds its own section to the Summary. Run as many as you like; nothing is lost when you switch.</p>
+    <div class="lens-compare" id="lensCompare"></div>
+    <div class="lens-guide" id="lensGuide"></div>
+    <p class="hint">Every quote from Claude is checked against your text, and any that don't appear word for word are removed. Click a quote in the Summary to jump to it in the document.</p>
   </div>
 </div>
 

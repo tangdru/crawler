@@ -113,8 +113,8 @@ export class Crawler {
   /* ---------- reading ---------- */
   dwellFor(t) {
     if (this.lens === "scan") return 0.012 + Math.min(t.text.length, 12) * 0.003;
-    if (this.lens === "themes") {
-      const hit = this.a.themeIndex && this.a.themeIndex.get(t.sentence);
+    if (this.lens === "insights" || this.lens === "uxr") {
+      const hit = this.a.aiIndex && this.a.aiIndex.get(t.sentence);
       if (hit && this.model.sentences[t.sentence].tokStart === t.i) return 0.7;
       return hit ? 0.05 : 0.014 + Math.min(t.text.length, 12) * 0.004;
     }
@@ -142,8 +142,8 @@ export class Crawler {
 
     if (this.lens === "references" || this.lens === "scan") {
       if (!t.atomic) t.el.classList.add("read");
-    } else if (this.lens === "themes") {
-      this.readThemes(t, loud);
+    } else if (this.lens === "insights" || this.lens === "uxr") {
+      this.readFindings(t, loud);
     } else if (this.lens === "trends") {
       this.readTrends(t, loud);
     } else {
@@ -206,23 +206,26 @@ export class Crawler {
     }
   }
 
-  readThemes(t, loud) {
+  // Insights and UXR: tint each quoted sentence in its finding's color, call the finding
+  // out, and pull a thread to its card on the wall.
+  readFindings(t, loud) {
     t.el.classList.add("read");
-    const hits = this.a.themeIndex && this.a.themeIndex.get(t.sentence);
+    const hits = this.a.aiIndex && this.a.aiIndex.get(t.sentence);
     if (!hits) return;
-    const theme = hits[0].theme;
+    const card = hits[0].card;
     const sent = this.model.sentences[t.sentence];
-    const col = hexA(theme.color, 0.26);
+    const col = hexA(card.color, 0.26);
     t.el.style.background = col;
     if (t.i + 1 < sent.tokEnd) t.el.style.boxShadow = `0.32em 0 0 ${col}`;
     if (sent.tokStart !== t.i) return;
-    for (const h of hits) this.onEvidence(h.theme, h.ev);
+    for (const h of hits) this.onEvidence(h.card, h.ev);
     if (!loud) return;
     const now = performance.now();
     for (const h of hits.slice(0, 2)) {
-      const tension = h.theme.kind === "tension";
-      if (this.effects.length < 40) this.effects.push({ kind: "callout", t, text: h.theme.title, label: `${tension ? "tension" : "theme"} ${h.theme.id + 1}${tension ? (h.ev.stance === "contradicts" ? " · against" : " · for") : ""}`, color: h.theme.color, born: now, life: 2600, angle: 0, dx: 14, dy: -38, small: true });
-      this.wallLinks.push({ x: t.cx, y: t.cy, theme: h.theme.id, color: h.theme.color, born: now });
+      const c = h.card;
+      const label = c.tension ? `${c.tag} · ${h.ev.stance === "contradicts" ? "against" : "for"}` : c.tag;
+      if (this.effects.length < 40) this.effects.push({ kind: "callout", t, text: c.title, label, color: c.color, born: now, life: 2600, angle: 0, dx: 14, dy: -38, small: true });
+      if (c.wall) this.wallLinks.push({ x: t.cx, y: t.cy, card: c.key, color: c.color, born: now });
     }
     if (this.wallLinks.length > 30) this.wallLinks.splice(0, this.wallLinks.length - 30);
     this.grab(t);
@@ -373,7 +376,7 @@ export class Crawler {
     for (const l of this.wallLinks) {
       const age = (now - l.born) / 3500;
       if (age > 1) continue;
-      const card = this.getCardPos(l.theme);
+      const card = this.getCardPos(l.card);
       if (!card) continue;
       ctx.strokeStyle = hexA(l.color, 0.75 * (1 - age));
       ctx.lineWidth = 1.2;
@@ -441,7 +444,7 @@ export class Crawler {
     ctx.beginPath();
     for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j += 2) { ctx.moveTo(nodes[i][0], nodes[i][1]); ctx.lineTo(nodes[j][0], nodes[j][1]); }
     ctx.stroke();
-    const core = { references: "#ff3fd8", trends: "#33e1ff", tone: "#ffd84d", themes: "#46f08a", scan: "#46f08a" }[this.lens];
+    const core = { references: "#ff3fd8", trends: "#33e1ff", tone: "#ffd84d", insights: "#46f08a", uxr: "#b58cff", scan: "#46f08a" }[this.lens];
     ctx.fillStyle = core; ctx.fillRect(bx - 4, by - 4, 8, 8);
     ctx.strokeStyle = "#fff"; ctx.strokeRect(bx - 6.5, by - 6.5, 13, 13);
     ctx.fillStyle = "#62ffd0";
