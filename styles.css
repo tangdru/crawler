@@ -294,3 +294,6 @@ input[type="text"], input[type="url"], textarea, select { font-size: 16px; }
   .src-label { display: none; }
 }
 tbody tr.on td { color: var(--ink-hi); background: rgba(255,255,255,.04); }
+/* numbers and headers never split mid-word; wide tables scroll inside their box */
+th, td.num { overflow-wrap: normal; white-space: nowrap; }
+.twrap table { min-width: 520px; }

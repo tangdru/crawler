@@ -512,7 +512,22 @@ window.addEventListener("keydown", (e) => {
   else if (e.key === "4") chooseLens("references");
 });
 let resizeTimer = 0;
-window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (ui.view === "summary" && project.sources.length) summary.render(project); }, 200); });
+// Redraw the summary only when the width changes. On phones, scrolling shows and hides
+// the browser's address bar, which changes only the height; redrawing then would jump
+// the page back up.
+let lastWidth = window.innerWidth;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (window.innerWidth === lastWidth) return;
+    lastWidth = window.innerWidth;
+    if (ui.view === "summary" && project.sources.length) {
+      const y = window.scrollY;
+      summary.render(project);
+      window.scrollTo(0, y);
+    }
+  }, 200);
+});
 
 // The fixed header wraps differently at each width; keep the page clear of it.
 const headEl = document.querySelector(".bar");
