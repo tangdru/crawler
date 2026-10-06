@@ -405,7 +405,8 @@ export class Summary {
       const cellEl = document.createElement("div"); cellEl.className = "mult";
       const dir = e.direction === "rising" ? "↗ rising" : e.direction === "fading" ? "↘ fading" : "steady";
       cellEl.innerHTML = `<div class="mlabel"><b>${esc(e.term)}</b> <span class="muted">${dir} · ${e.count}×</span></div>`;
-      const W = 220, H = 64, pad = 6;
+      wrap.appendChild(cellEl); // in the grid first, so its column width can be measured
+      const W = Math.max(180, Math.round(cellEl.clientWidth) || 220), H = 64, pad = 6;
       const s = svg(W, H);
       const max = Math.max(...e.rate, 1e-6);
       const xs = (i) => pad + (i / (e.rate.length - 1)) * (W - pad * 2 - 6);
@@ -421,7 +422,6 @@ export class Summary {
         this.hover(hit, `<b>${esc(e.term)}</b> · slice ${i + 1} of ${e.rate.length}<br>${v.toFixed(1)} per 1,000 words`);
       });
       cellEl.appendChild(s);
-      wrap.appendChild(cellEl);
     }
   }
 
