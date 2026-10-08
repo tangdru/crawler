@@ -14,21 +14,12 @@
 
 <header class="bar">
   <div class="brand">Reference Crawler</div>
-  <div class="ctl lens-ctl">
-    <div class="seg" role="radiogroup" aria-label="Lens">
-      <button type="button" role="radio" data-lens="insights" aria-checked="false" title="Claude: the gist, claims and how well they're backed, who says what">Insights</button>
-      <button type="button" role="radio" data-lens="uxr" aria-checked="false" title="Claude: UX research synthesis: themes, pain points, personas, jobs to be done">UXR</button>
-      <button type="button" role="radio" data-lens="tone" aria-checked="false">Tone</button>
-      <button type="button" role="radio" data-lens="trends" aria-checked="true">Trends</button>
-      <button type="button" role="radio" data-lens="references" aria-checked="false">References</button>
+  <div class="ctl">
+    <div class="seg" role="tablist" aria-label="Page">
+      <button type="button" role="tab" data-view="sources" aria-selected="false">Sources</button>
+      <button type="button" role="tab" data-view="analysis" aria-selected="true">Analysis</button>
     </div>
     <button type="button" id="helpBtn" class="help-btn" aria-label="What do the lenses do?" title="What do the lenses do?">?</button>
-  </div>
-  <div class="ctl">
-    <div class="seg" role="tablist" aria-label="View">
-      <button type="button" role="tab" data-view="doc" aria-selected="true">Document</button>
-      <button type="button" role="tab" data-view="summary" aria-selected="false">Summary</button>
-    </div>
     <div class="menu">
       <button id="exportBtn" type="button" aria-haspopup="true" aria-expanded="false">Export CSV</button>
       <div class="menu-list" id="exportMenu" hidden>
@@ -41,16 +32,25 @@
       </div>
     </div>
   </div>
-  <nav class="source-bar" aria-label="Sources in this project">
-    <span class="src-label">Sources</span>
-    <div class="src-scroll" id="sourceBar"></div>
-    <button type="button" id="addSource" class="src-add primary">+ Add source</button>
-  </nav>
+  <div class="crawl-bar" id="crawlBar" hidden>
+    <span class="crawl-title" id="crawlTitle"></span>
+    <button type="button" id="closeCrawl" title="Stop the crawl and go back to Analysis">✕ Close</button>
+  </div>
 </header>
+
+<aside class="library" id="library" hidden aria-label="Your sources">
+  <div class="lib-head">
+    <h2>Sources</h2>
+    <button type="button" id="addSource" class="primary">+ Add source</button>
+  </div>
+  <ol class="lib-list" id="libList"></ol>
+  <p class="hint">Click a source to read it. Run lenses on the Analysis page.</p>
+</aside>
 
 <canvas id="fx" aria-hidden="true"></canvas>
 
 <main id="docView">
+  <div class="back-row" id="backRow" hidden><button type="button" id="backToAnalysis">← Back to Analysis</button></div>
   <div class="docmeta" id="docMeta"></div>
   <article id="doc"></article>
 </main>
@@ -147,10 +147,10 @@
       <h3 id="helpTitle">What do the lenses do?</h3>
       <button type="button" id="closeHelp" class="ghost">Close</button>
     </div>
-    <p class="hint">Each lens reads your sources with a different question in mind and adds its own section to the Summary. Run as many as you like; nothing is lost when you switch.</p>
+    <p class="hint">Each lens reads your sources with a different question in mind and adds its own section to the Analysis page. Run as many as you like; nothing is lost when you switch.</p>
     <div class="lens-compare" id="lensCompare"></div>
     <div class="lens-guide" id="lensGuide"></div>
-    <p class="hint">Every quote from Claude is checked against your text, and any that don't appear word for word are removed. Click a quote in the Summary to jump to it in the document.</p>
+    <p class="hint">Every quote from Claude is checked against your text, and any that don't appear word for word are removed. Click a quote on the Analysis page to jump to it in the document.</p>
   </div>
 </div>
 

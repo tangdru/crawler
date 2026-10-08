@@ -28,7 +28,7 @@ const LENS_TEXT = {
 const LENS_ACCENT = { references: "#ffd84d", trends: "#33e1ff", tone: "#ff3fd8", insights: "#46f08a", uxr: "#b58cff", scan: "#46f08a" };
 
 const project = { sources: [], active: 0, ai: { insights: null, uxr: null }, asks: [], questions: { insights: "", uxr: "" } };
-const ui = { lens: "trends", view: "doc", aiRun: null };
+const ui = { lens: "trends", view: "analysis", aiRun: null };
 const newKey = () => Math.random().toString(36).slice(2, 10);
 
 const crawler = new Crawler({
@@ -38,7 +38,13 @@ const crawler = new Crawler({
   onEvidence: (card) => wallPulse(card),
   getCardPos: (id) => cardPos(id)
 });
-const summary = new Summary($("summaryView"), $("tip"), { jump, ask, askCost, combine, runAI: (lens) => chooseLens(lens), cancelRun: () => ui.aiRun && ui.aiRun.ctl.abort("cancel") });
+const summary = new Summary($("summaryView"), $("tip"), {
+  jump, ask, askCost, combine,
+  runAI: (lens) => chooseLens(lens),
+  replay: (lens) => replayLens(lens),
+  rerunAI: (lens) => openAiSheet(lens),
+  cancelRun: () => ui.aiRun && ui.aiRun.ctl.abort("cancel")
+});
 
 /* ---------- sources ---------- */
 function makeSource(doc, key = newKey(), ran = {}) {
@@ -66,8 +72,8 @@ function addSources(docs, { replace = false } = {}) {
   if (replace) { project.sources = []; project.ai = { insights: null, uxr: null }; project.asks = []; }
   project.sources.push(...made);
   persist();
-  const first = project.sources.length - made.length;
-  crawlInTurn(ui.lens, made.map((_, k) => first + k));
+  // Sources are where you load and read; nothing is analysed until you run a lens.
+  showReader(project.sources.length - made.length);
 }
 
 function removeSource(i) {
@@ -77,7 +83,22 @@ function removeSource(i) {
   if (!project.sources.length) { persist(); openSample("river"); return; }
   project.active = Math.min(project.active, project.sources.length - 1);
   persist();
-  showSource(project.active);
+  showReader(project.active);
+}
+
+// The Sources page: read a source without a crawl. `back` shows the way back to
+// Analysis when you arrive from a chart or quote.
+function showReader(i, { back = false } = {}) {
+  project.active = i;
+  const src = active();
+  crawler.setPlaying(false);
+  ui.queue = null;
+  renderSourceBar();
+  renderMeta(src.model);
+  renderModel(src.model, $("doc"));
+  $("backRow").hidden = !back;
+  if (ui.view !== "sources") setView("sources");
+  window.scrollTo(0, 0);
 }
 
 function showSource(i, { autoplay = true, lens } = {}) {
@@ -137,19 +158,21 @@ function skimTags(src, lens) {
 }
 
 function renderSourceBar() {
-  const bar = $("sourceBar");
-  bar.textContent = "";
+  const list = $("libList");
+  list.textContent = "";
   project.sources.forEach((src, i) => {
-    const chip = document.createElement("div");
-    chip.className = "src-chip" + (i === project.active ? " on" : "");
-    const lensDots = ["trends", "tone", "references"].filter((l) => src.ran[l]).map((l) => `<i class="ld ${l}" title="${l} has run"></i>`).join("");
-    chip.innerHTML = `<button type="button" class="pick" title="${esc(src.model.title)}"><b>S${i + 1}</b> ${esc(src.model.title.length > 34 ? src.model.title.slice(0, 33) + "…" : src.model.title)} ${lensDots}</button><button type="button" class="rm" aria-label="Remove ${esc(src.model.title)}">×</button>`;
-    chip.querySelector(".pick").addEventListener("click", () => { if (i !== project.active) { ui.queue = null; showSource(i); } });
-    chip.querySelector(".rm").addEventListener("click", () => removeSource(i));
-    bar.appendChild(chip);
+    const m = src.model, meta = m.meta || {};
+    let where = meta.file || "";
+    if (meta.url) { try { where = new URL(meta.url).hostname.replace(/^www\./, ""); } catch {} }
+    if (meta.sample) where = "sample";
+    const li = document.createElement("li");
+    li.className = "lib-item" + (i === project.active ? " on" : "");
+    const lensDots = ["tone", "trends", "references"].filter((l) => src.ran[l]).map((l) => `<i class="ld ${l}" title="${LENS[l].name} has run"></i>`).join("");
+    li.innerHTML = `<button type="button" class="pick"><span class="sid">S${i + 1}</span><span class="t">${esc(m.title)}</span><span class="m">${m.wordCount.toLocaleString("en-US")} words${where ? " · " + esc(where) : ""} ${lensDots}</span></button><button type="button" class="rm" aria-label="Remove ${esc(m.title)}" title="Remove">×</button>`;
+    li.querySelector(".pick").addEventListener("click", () => showReader(i));
+    li.querySelector(".rm").addEventListener("click", () => removeSource(i));
+    list.appendChild(li);
   });
-  const on = bar.querySelector(".src-chip.on");
-  if (on) on.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 function renderMeta(model) {
@@ -239,16 +262,34 @@ function startLens(lens, autoplay = true) {
   const shown = lens === "scan" ? (ui.skim ? ui.skim.lens : ui.aiRun ? ui.aiRun.lens : "insights") : lens;
   document.querySelectorAll("[data-lens]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.lens === shown)));
   document.documentElement.style.setProperty("--accent", LENS_ACCENT[shown]);
-  setView("doc");
+  setView("crawl");
   crawler.load(active().model, analysesFor(active()));
   crawler.start(lens);
   setPlaying(autoplay && !crawler.reduceMotion);
   $("hudLine").textContent = LENS_TEXT[lens];
   setSkipLabel();
+  crawlTitle();
   renderWall();
 }
+// The bar under the header during a crawl: which lens, which source.
+function crawlTitle() {
+  const lens = ui.lens === "scan" ? (ui.skim ? ui.skim.lens : ui.aiRun ? ui.aiRun.lens : "insights") : ui.lens;
+  const n = project.sources.length, i = project.active;
+  const step = ui.queue ? `source ${ui.queue.pos + 1} of ${ui.queue.list.length}` : ui.skim ? `skimming source ${ui.skim.skimmed.size + 1} of ${n}` : n > 1 ? `S${i + 1} of ${n}` : "";
+  const name = LENS[lens] ? LENS[lens].name : lens;
+  $("crawlTitle").innerHTML = `<b style="color:${LENS_ACCENT[lens] || "#fff"}">${esc(name)}</b>${ui.lens === "scan" ? " · Claude is reading" : ""}${step ? ` · ${step}` : ""} · <span>S${i + 1} ${esc(active().model.title)}</span>`;
+}
+// Close the crawl: stop where it is and go back to Analysis. A Claude run keeps going and
+// shows its progress there.
+function closeCrawl() {
+  ui.queue = null;
+  if (ui.skim) ui.skim = null;
+  setPlaying(false);
+  showSummaryAt(ui.lens === "scan" && ui.aiRun ? ui.aiRun.lens : ui.lens);
+}
+
 // "Skip to results" skips the rest of the crawl (every remaining source) and opens the
-// Summary. While Claude works there is nothing to skip; the button cancels the run instead.
+// Analysis page. While Claude works there is nothing to skip; the button cancels the run instead.
 function setSkipLabel() {
   const waiting = ui.lens === "scan" && ui.aiRun;
   $("skip").innerHTML = waiting ? "Cancel" : `${ICONS.skip}<span>Skip to results</span>`;
@@ -266,18 +307,24 @@ function chooseLens(lens) {
   crawlInTurn(lens, project.sources.map((_, i) => i));
 }
 
-// Trends, Tone and References crawl every source in turn (S1, S2, …) and open the Summary
+// Trends, Tone and References crawl every source in turn (S1, S2, …) and open Analysis
 // once the last one is done. The Claude lenses already read the whole project at once.
 function crawlInTurn(lens, list) {
   if (isAI(lens) && !project.ai[lens]) lens = "trends";
-  if (isAI(lens) || list.length < 2) { ui.queue = null; showSource(list[0] ?? 0, { lens }); return; }
+  if (list.length < 2) { ui.queue = null; showSource(list[0] ?? 0, { lens }); return; }
   ui.queue = { lens, list, pos: 0 };
   showSource(list[0], { lens });
+}
+// Replay a lens that has run: crawl every source again with its marks.
+function replayLens(lens) {
+  if (!project.sources.length) return;
+  if (isAI(lens) && !project.ai[lens]) { openAiSheet(lens); return; }
+  crawlInTurn(lens, project.sources.map((_, i) => i));
 }
 function nextInTurn() {
   const q = ui.queue;
   if (!q) return;
-  if (ui.view !== "doc") { q.waiting = true; return; }   // continue when the document is back in view
+  if (ui.view !== "crawl") { q.waiting = true; return; }   // continue when the document is back in view
   q.waiting = false;
   q.pos++;
   showSource(q.list[q.pos], { lens: q.lens });
@@ -304,27 +351,27 @@ function playLabel() {
   b.setAttribute("aria-label", label);
   b.title = label;
 }
-// Leaving the crawl (Summary, the Add dialog) pauses it; coming back picks up where it was.
+// Leaving the crawl (the Add dialog, the guide) pauses it; coming back picks up where it was.
 function pauseForAway() {
   if (crawler.playing && ui.lens !== "scan") { ui.resumeOnReturn = true; setPlaying(false); }
 }
 function resumeIfAway() {
-  if (ui.resumeOnReturn) { ui.resumeOnReturn = false; if (!crawler.done && ui.view === "doc") setPlaying(true); }
+  if (ui.resumeOnReturn) { ui.resumeOnReturn = false; if (!crawler.done && ui.view === "crawl") setPlaying(true); }
 }
 
 function finished(lens) {
   if (lens === "scan") {
-    // Skim each source once, then open the Summary, like the other lenses. If Claude is
-    // still writing, the Summary shows its progress and a live preview.
+    // Skim each source once, then open Analysis, like the other lenses. If Claude is
+    // still writing, Analysis shows its progress and a live preview.
     const sk = ui.skim;
     if (!sk) return;
-    if (ui.view !== "doc") { ui.skim = null; return; }
+    if (ui.view !== "crawl") { ui.skim = null; return; }
     sk.skimmed.add(project.active);
     const next = project.sources.findIndex((_, i) => !sk.skimmed.has(i));
     if (next >= 0 && !sk.skipAll) { showSource(next, { lens: "scan" }); return; }
     ui.skim = null;
     playLabel();
-    setTimeout(() => { if (ui.view === "doc" && ui.lens === "scan") showSummaryAt(sk.lens); }, 700);
+    setTimeout(() => { if (ui.view === "crawl" && ui.lens === "scan") showSummaryAt(sk.lens); }, 700);
     return;
   }
   const src = active();
@@ -346,14 +393,14 @@ function finished(lens) {
     }
     ui.queue = null;
     hud(crawler.progress());
-    if (ui.view === "summary") summary.render(project);
+    if (ui.view === "analysis") summary.render(project);
     toast(`${LENS[lens].name} done for all ${q.list.length} sources`);
-    setTimeout(() => { if (crawler.done && ui.view === "doc" && crawler.lens === lens) setView("summary"); }, 1400);
+    setTimeout(() => { if (crawler.done && ui.view === "crawl" && crawler.lens === lens) showSummaryAt(lens); }, 1400);
     return;
   }
-  if (ui.view === "summary") summary.render(project);
-  toast(isAI(lens) ? `${AI_NAME[lens]} ${lens === "uxr" ? "is" : "are"} in the summary` : first ? `${lens[0].toUpperCase() + lens.slice(1)} added to the summary` : "Summary updated");
-  setTimeout(() => { if (crawler.done && ui.view === "doc" && crawler.lens === lens) setView("summary"); }, 1400);
+  if (ui.view === "analysis") summary.render(project);
+  toast(isAI(lens) ? `${AI_NAME[lens]} ${lens === "uxr" ? "is" : "are"} in Analysis` : first ? `${lens[0].toUpperCase() + lens.slice(1)} added to Analysis` : "Analysis updated");
+  setTimeout(() => { if (crawler.done && ui.view === "crawl" && crawler.lens === lens) showSummaryAt(lens); }, 1400);
 }
 
 /* ---------- Claude: Insights and UXR ---------- */
@@ -422,8 +469,8 @@ async function runAI() {
   };
   summary.run = run;
   ui.skim = { lens, skimmed: new Set() };
-  // The HUD and the live Summary otherwise update only when something moves; keep the clock running.
-  const tick = setInterval(() => { if (ui.lens === "scan") hud(crawler.progress()); if (ui.view === "summary") summary.updateLive(); }, 1000);
+  // The HUD and the live Analysis page otherwise update only when something moves; keep the clock running.
+  const tick = setInterval(() => { if (ui.lens === "scan") hud(crawler.progress()); if (ui.view === "analysis") summary.updateLive(); }, 1000);
   const limit = setTimeout(() => ctl.abort("timeout"), 240000);
   let lastPreview = 0;
   showSource(0, { lens: "scan" });
@@ -435,11 +482,11 @@ async function runAI() {
       if (now - lastPreview > 450) {
         lastPreview = now;
         if (p.text) run.preview = parsePartial(p.text) || run.preview;
-        if (ui.view === "summary") summary.updateLive();
+        if (ui.view === "analysis") summary.updateLive();
       }
     }, ctl.signal);
     run.phase = "checking";
-    if (ui.view === "summary") summary.updateLive();
+    if (ui.view === "analysis") summary.updateLive();
     const checked = lens === "uxr" ? verifyUxr(raw, sources) : verifyInsights(raw, sources);
     const main = lens === "uxr" ? checked.themes : checked.keyPoints;
     if (!main.length) throw new Error("Claude's answer had no quotes that could be found in the text, so nothing is shown. Try again.");
@@ -451,14 +498,14 @@ async function runAI() {
     const u = raw.usage || {};
     const found = lens === "uxr" ? `${checked.themes.length} themes, ${checked.painPoints.length} pain points` : `${checked.keyPoints.length} key points, ${checked.claims.length} claims`;
     toast(`${AI_NAME[lens]}: ${found}${checked.dropped ? `; ${checked.dropped} unverifiable quote${checked.dropped === 1 ? "" : "s"} removed` : ""}`);
-    if (ui.view === "summary") rerenderSummary();
+    if (ui.view === "analysis") rerenderSummary();
   } catch (err) {
     const cancelled = ctl.signal.aborted && ctl.signal.reason !== "timeout";
     ui.aiRun = null;
     summary.run = null;
     ui.skim = null;
     console.error(err);
-    if (ui.view === "summary") rerenderSummary();
+    if (ui.view === "analysis") rerenderSummary();
     else if (ui.lens === "scan") startLens("trends", false);
     if (cancelled) { toast(`${AI_NAME[lens]} cancelled.`); return; }
     ui.sheetLens = lens;
@@ -472,12 +519,12 @@ async function runAI() {
   }
 }
 
-// Open the Summary scrolled to a lens's section.
+// Open Analysis scrolled to a lens's section.
 function showSummaryAt(lens) {
-  setView("summary");
+  setView("analysis");
   requestAnimationFrame(() => {
-    const h = [...document.querySelectorAll("#summaryView .sec-head h2")].find((x) => x.textContent === AI_NAME[lens] || x.textContent.toLowerCase() === lens);
-    if (h) window.scrollTo(0, h.getBoundingClientRect().top + window.scrollY - (document.querySelector(".bar").offsetHeight + 12));
+    const h = document.getElementById(`sec-${lens}`);
+    if (h) window.scrollTo(0, h.getBoundingClientRect().top + window.scrollY - (document.querySelector(".bar").offsetHeight + 70));
   });
 }
 function rerenderSummary() {
@@ -504,7 +551,7 @@ function wallCards() {
 }
 function renderWall() {
   const wall = $("wall");
-  const show = isAI(ui.lens) && project.ai[ui.lens] && ui.view === "doc";
+  const show = isAI(ui.lens) && project.ai[ui.lens] && ui.view === "crawl";
   wall.hidden = !show;
   if (!show) return;
   const all = cardsFor(ui.lens, project.ai[ui.lens]);
@@ -521,7 +568,7 @@ function renderWall() {
     card.dataset.card = c.key;
     card.style.setProperty("--tc", c.color);
     card.innerHTML = `<div class="wt"><span class="num">${c.num}</span>${esc(c.title)}</div><div class="wn"><b data-n>0</b>/${countHere.get(c.key) || 0} here · ${c.evidence.length} in project${c.note ? " · " + c.note : ""}</div>`;
-    card.addEventListener("click", () => { setView("summary"); });
+    card.addEventListener("click", () => { setView("analysis"); });
     cards.appendChild(card);
   }
 }
@@ -568,44 +615,58 @@ function openHelp() { pauseForAway(); renderGuide(); $("helpSheet").hidden = fal
 function closeHelp() { $("helpSheet").hidden = true; resumeIfAway(); }
 
 /* ---------- views ---------- */
+// Three places: Sources (load and read), Analysis (run lenses, see results) and the
+// crawl, a full-screen mode you enter from Analysis.
 function setView(v) {
+  const was = ui.view;
   ui.view = v;
-  document.querySelectorAll("[data-view]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.view === v)));
-  $("docView").hidden = v !== "doc";
-  $("fx").hidden = v !== "doc";
-  $("summaryView").hidden = v !== "summary";
-  document.body.classList.toggle("summary-mode", v === "summary");
-  crawler.visible = v === "doc";
-  if (v === "summary") {
+  const tab = v === "crawl" ? "analysis" : v;
+  document.querySelectorAll("[data-view]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.view === tab)));
+  $("docView").hidden = v === "analysis";
+  $("library").hidden = v !== "sources";
+  $("fx").hidden = v !== "crawl";
+  $("summaryView").hidden = v !== "analysis";
+  $("crawlBar").hidden = v !== "crawl";
+  document.body.classList.toggle("mode-sources", v === "sources");
+  document.body.classList.toggle("mode-analysis", v === "analysis");
+  document.body.classList.toggle("mode-crawl", v === "crawl");
+  crawler.visible = v === "crawl";
+  if (v !== "crawl") $("backRow").hidden = $("backRow").hidden || v !== "sources";
+  if (v === "analysis") {
     if (project.sources.length) summary.render(project);
-    window.scrollTo(0, 0);
-  } else {
+    if (was !== "analysis") window.scrollTo(0, 0);
+  } else if (v === "crawl") {
     requestAnimationFrame(() => crawler.measure());
   }
   renderWall();
 }
 
+// From a chart or quote on Analysis: open that passage on the Sources page, highlighted,
+// with a way back.
 function jump({ token, sentence, sourceKey, sourceIndex }) {
   let i = project.active;
   if (sourceKey) i = project.sources.findIndex((s) => s.key === sourceKey);
   if (sourceIndex != null) i = sourceIndex;
   if (i < 0) return;
-  if (i !== project.active) showSource(i, { autoplay: false });
+  ui.backY = window.scrollY;
+  showReader(i, { back: true });
   const m = active().model;
   if (token == null && sentence != null) token = m.sentences[sentence]?.tokStart;
-  if (token == null) { setView("doc"); return; }
+  if (token == null) return;
   const t = m.tokens[token];
   if (!t || !t.el) return;
-  setPlaying(false);
-  setView("doc");
   requestAnimationFrame(() => {
-    crawler.measure();
     const target = t.el.closest("[data-block]") || t.el;
-    t.el.scrollIntoView({ block: "center", behavior: crawler.reduceMotion ? "auto" : "smooth" });
-    crawler.userScrollUntil = performance.now() + 4000;
+    t.el.scrollIntoView({ block: "center", behavior: "auto" });
     target.classList.remove("flash"); void target.offsetWidth; target.classList.add("flash");
-    crawler.gaze = { x: t.cx, y: t.cy };
   });
+}
+function backToAnalysis() {
+  const y = ui.backY || 0;
+  setView("analysis");
+  // Charts finish laying out a frame later; restore the position once they have.
+  requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, y)));
+  setTimeout(() => { if (Math.abs(window.scrollY - y) > 4) window.scrollTo(0, y); }, 120);
 }
 
 /* ---------- hud ---------- */
@@ -618,7 +679,7 @@ function hud(p) {
   if (p.lens === "scan") {
     const r = ui.aiRun;
     const secs = r ? Math.round((performance.now() - r.started) / 1000) : 0;
-    if (!r) { add("Claude is done · finishing the skim, then the Summary", "stat"); return; }
+    if (!r) { add("Claude is done · finishing the skim, then Analysis", "stat"); return; }
     add(`Claude is reading ${project.sources.length} source${project.sources.length === 1 ? "" : "s"}`, "stat");
     add(`<b>${secs}s</b>`, "stat");
     const col = r ? LENS_ACCENT[r.lens] : "#46f08a";
@@ -709,21 +770,19 @@ async function doExport(kind) {
 /* ---------- controls ---------- */
 document.querySelectorAll("[data-lens]").forEach((b) => b.addEventListener("click", () => chooseLens(b.dataset.lens)));
 document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => {
-  if (b.dataset.view === "summary") pauseForAway();
-  setView(b.dataset.view);
-  if (b.dataset.view === "doc") {
-    if (ui.queue && ui.queue.waiting) nextInTurn();
-    else if (ui.lens === "scan" && !ui.skim && !ui.aiRun && ui.lastAI && project.ai[ui.lastAI]) startLens(ui.lastAI);
-    else resumeIfAway();
-  }
+  if (ui.view === "crawl") { closeCrawl(); if (b.dataset.view === "analysis") return; }
+  if (b.dataset.view === "sources") showReader(project.active);
+  else setView(b.dataset.view);
 }));
-$("play").addEventListener("click", () => { setView("doc"); setPlaying(!crawler.playing); });
+$("closeCrawl").addEventListener("click", closeCrawl);
+$("backToAnalysis").addEventListener("click", backToAnalysis);
+$("play").addEventListener("click", () => setPlaying(!crawler.playing));
 $("speed").addEventListener("change", (e) => { crawler.speed = parseFloat(e.target.value); });
 $("skip").addEventListener("click", () => {
   if (ui.lens === "scan" && ui.aiRun) { ui.aiRun.ctl.abort("cancel"); return; }
   if (ui.lens === "scan" && ui.skim) { ui.skim.skipAll = true; if (!crawler.done) crawler.skip(); else finished("scan"); return; }
   if (ui.queue) ui.queue.skipAll = true;
-  if (project.sources.length && !crawler.done) { setView("doc"); crawler.skip(); }
+  if (project.sources.length && !crawler.done) crawler.skip();
   else if (ui.queue) finished(ui.lens);
 });
 $("addSource").addEventListener("click", openSheet);
@@ -766,10 +825,11 @@ exportMenu.querySelectorAll("[data-export]").forEach((b) => b.addEventListener("
 
 window.addEventListener("keydown", (e) => {
   if (e.target.closest("input, textarea, select, [contenteditable]")) return;
+  if (e.key === "Escape" && ui.view === "crawl" && $("sheet").hidden && $("aiSheet").hidden && $("helpSheet").hidden) { closeCrawl(); return; }
   if (e.key === "Escape") { if (!$("sheet").hidden) closeSheet(); if (!$("helpSheet").hidden) closeHelp(); $("aiSheet").hidden = true; exportMenu.hidden = true; return; }
   if (!$("sheet").hidden || !$("aiSheet").hidden || !$("helpSheet").hidden) return;
   if (e.key === "?") { openHelp(); return; }
-  if (e.code === "Space") { e.preventDefault(); setView("doc"); setPlaying(!crawler.playing); }
+  if (e.code === "Space" && ui.view === "crawl") { e.preventDefault(); setPlaying(!crawler.playing); }
   else if (e.key === "1") chooseLens("insights");
   else if (e.key === "2") chooseLens("uxr");
   else if (e.key === "3") chooseLens("tone");
@@ -786,7 +846,7 @@ window.addEventListener("resize", () => {
   resizeTimer = setTimeout(() => {
     if (window.innerWidth === lastWidth) return;
     lastWidth = window.innerWidth;
-    if (ui.view === "summary" && project.sources.length) {
+    if (ui.view === "analysis" && project.sources.length) {
       const y = window.scrollY;
       summary.render(project);
       window.scrollTo(0, y);
@@ -808,7 +868,7 @@ setHud();
 (async () => {
   const params = new URLSearchParams(location.search);
   const saved = await loadProject();
-  if (!saved) setTimeout(() => toast("New here? Tap the ? next to the lenses to see what each one does."), 2500);
+  if (!saved) setTimeout(() => toast("This is a demo crawl of a sample project. Add your own on the Sources page; the ? explains each lens."), 2500);
   if (saved && saved.sources && saved.sources.length) {
     try {
       project.sources = saved.sources.map((s) => makeSource(s.doc, s.key, s.ran));
@@ -822,8 +882,10 @@ setHud();
     if (!project.sources.length) addSources([SAMPLES.article()], { replace: true });
     openFrom("url", params.get("url"));
   } else if (project.sources.length) {
-    crawlInTurn(ui.lens, project.sources.map((_, i) => i));
+    setView("analysis");
   } else {
+    // First visit: a one-time demo crawl of the sample, then the results on Analysis.
     openSample("river");
+    crawlInTurn("trends", project.sources.map((_, i) => i));
   }
 })();

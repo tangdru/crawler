@@ -1,4 +1,4 @@
-// Summary view: panels accumulate as lenses run. Hand-built SVG charts following one
+// Analysis page (the summary): panels accumulate as lenses run. Hand-built SVG charts following one
 // system: thin marks, single-hue magnitude, blue/red diverging tone, recessive axes,
 // text in ink tokens, and a hover tooltip plus click-to-passage on every mark.
 
@@ -47,7 +47,9 @@ function barPathLeft(x1, y, len, h, r = 4) {
 }
 
 export class Summary {
-  constructor(root, tip, { jump, ask, askCost, combine, runAI, cancelRun }) {
+  constructor(root, tip, { jump, ask, askCost, combine, runAI, replay, rerunAI, cancelRun }) {
+    this.replay = replay;
+    this.rerunAI = rerunAI;
     this.cancelRun = cancelRun;
     this.run = null;   // a Claude run in progress: { lens, phase, text, preview, … }
     this.root = root;
@@ -111,7 +113,17 @@ export class Summary {
     h.className = "sec-head";
     const lens = LENS[title.toLowerCase()];
     const what = lens ? `<p class="what">${esc(lens.question)}<span>${lens.claude ? "Claude" : "counted in your browser"}</span></p>` : "";
-    h.innerHTML = `<h2>${esc(title)}</h2>${what}${sub ? `<p class="sub">${esc(sub)}</p>` : ""}`;
+    h.innerHTML = `<div class="sec-title"><h2>${esc(title)}</h2><div class="sec-actions"></div></div>${what}${sub ? `<p class="sub">${esc(sub)}</p>` : ""}`;
+    if (lens) {
+      h.id = `sec-${lens.id}`;
+      // A lens that has run can be replayed (the crawl again), and a Claude lens run again.
+      const acts = h.querySelector(".sec-actions");
+      const btn = (label, title, fn) => { const b = document.createElement("button"); b.type = "button"; b.innerHTML = label; b.title = title; b.addEventListener("click", fn); acts.appendChild(b); };
+      if (this.ranMap && this.ranMap[lens.id] === true) {
+        btn("↻ Replay", `Watch the ${lens.name} crawl again`, () => this.replay(lens.id));
+        if (lens.claude) btn("Run again", `Ask Claude for a fresh ${lens.name} read`, () => this.rerunAI(lens.id));
+      }
+    }
     this.root.appendChild(h);
     this.grid = document.createElement("div");
     this.grid.className = "panels";
@@ -143,11 +155,22 @@ export class Summary {
     this.root.textContent = "";
     const head = document.createElement("header");
     head.className = "sum-head";
-    head.innerHTML = `<div class="eyebrow">Summary · ${n} source${n === 1 ? "" : "s"}</div>
+    head.innerHTML = `<div class="eyebrow">Analysis · ${n} source${n === 1 ? "" : "s"}</div>
       <h2>${found ? "What the crawler found" : "Run a crawl to build the summary"}</h2>
       <p class="sub">${found ? "Read top to bottom: what it says (Insights, UXR), how it says it (Tone), then what it's built from (Trends, References). Each lens you run adds its section." : "Each section below has a Run button: the free lenses crawl every source in your browser, and Insights and UXR ask Claude. You can ask your sources a question at any time."}</p>`;
     this.root.appendChild(head);
-    if (n > 1) this.scopePicker(srcs, sel);
+    const running = this.run ? this.run.lens : null;
+    this.ranMap = {
+      insights: running === "insights" ? "running" : !!project.ai.insights,
+      uxr: running === "uxr" ? "running" : !!project.ai.uxr,
+      tone: ran.tone, trends: ran.trends, references: any
+    };
+    // Sticky bar: which sources to show, and a jump row to each lens's section.
+    const nav = document.createElement("div");
+    nav.className = "sum-nav";
+    if (n > 1) this.scopePicker(srcs, sel, nav);
+    this.jumpRow(nav);
+    this.root.appendChild(nav);
 
     const label = (list) => list.map((s) => `S${srcs.indexOf(s) + 1}`).join(" + ");
     const scope = n === 1 ? "" : all ? `All ${n} sources together.` : sel.length === 1 ? `S${srcs.indexOf(sel[0]) + 1} · ${model.title}.` : `${label(sel)} together.`;
@@ -204,7 +227,30 @@ export class Summary {
 
   // All, or any combination of sources. Tapping a source while All is on shows that source
   // alone; tapping more adds them.
-  scopePicker(srcs, sel) {
+  // Jump row: scrolls to a lens's section. A tick marks the lenses that have run.
+  jumpRow(parent) {
+    const row = document.createElement("nav");
+    row.className = "jump-row";
+    row.setAttribute("aria-label", "Jump to a section");
+    row.innerHTML = `<span class="scope-label">Jump to</span>`;
+    for (const id of ["insights", "uxr", "tone", "trends", "references"]) {
+      const state = this.ranMap[id];
+      const a = document.createElement("a");
+      a.href = `#sec-${id}`;
+      a.className = "jump" + (state === true ? " done" : state === "running" ? " running" : "");
+      a.innerHTML = `${LENS[id].name}${state === true ? ' <span aria-label="has run">✓</span>' : state === "running" ? ' <span class="spin" aria-label="running"></span>' : ""}`;
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        const h = document.getElementById(`sec-${id}`);
+        const nav = this.root.querySelector(".sum-nav");
+        if (h) window.scrollTo({ top: h.getBoundingClientRect().top + window.scrollY - (document.querySelector(".bar").offsetHeight + (nav ? nav.offsetHeight : 0) + 16), behavior: "smooth" });
+      });
+      row.appendChild(a);
+    }
+    parent.appendChild(row);
+  }
+
+  scopePicker(srcs, sel, parent) {
     const bar = document.createElement("div");
     bar.className = "scope";
     const all = sel.length === srcs.length;
@@ -230,7 +276,7 @@ export class Summary {
     hint.className = "scope-hint";
     hint.textContent = all ? "Tap a source to see it alone; tap more to combine." : "Tap sources to add or remove them.";
     bar.appendChild(hint);
-    this.root.appendChild(bar);
+    parent.appendChild(bar);
   }
   setScope(keys) {
     this.scopeKeys = keys;
