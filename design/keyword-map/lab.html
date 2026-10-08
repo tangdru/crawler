@@ -343,7 +343,7 @@ function draw() {
     const tries = [[cx - w / 2, top - gap - h], [cx - w / 2, bot + gap], [left - gap - w, cy - h / 2], [right + gap, cy - h / 2], [cx - w / 2, top - gap - h - 18], [cx - w / 2, bot + gap + 18]].map(([x, y]) => ({ x, y, w, h }));
     const b = tries.find((t) => !clash(t)) || tries[0];
     nameBoxes.push(b);
-    el(s, "text", { x: b.x + w / 2, y: b.y + 11, "text-anchor": "middle", class: "t-group" }, txt);
+    el(s, "text", { x: b.x + w / 2, y: b.y + 11, "text-anchor": "middle", class: "t-group", style: `fill:${gcol(+c)}` }, txt);
   }
 
   /* marks */

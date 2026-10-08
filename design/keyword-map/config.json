@@ -12,13 +12,20 @@
   "groupNames": "off",
   "links": "hover",
   "color": "group",
-  "umap": { "metric": "cosine", "nNeighbors": 5, "minDist": 0.02, "nEpochs": 600, "seed": 7 },
+  "umap": {
+    "metric": "cosine",
+    "nNeighbors": 5,
+    "minDist": 0.02,
+    "nEpochs": 600,
+    "seed": 7
+  },
   "groupedPull": 0.65,
   "candidate": {
-    "name": "Your pick · rich",
+    "name": "Your pick \u00b7 rich",
     "profile": "rich1",
     "groups": "profile",
     "spread": "tight",
     "note": "Same styling; profiles from the 200 most common words within one sentence either side; no Grouped pull."
-  }
+  },
+  "themeNameColor": "group"
 }
