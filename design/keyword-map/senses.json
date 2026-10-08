@@ -1,0 +1,14 @@
+{
+  "_about": "Sense of each keyword as used in the river sample, chosen by Claude after reading every sentence the keyword appears in (in the app this would be one Claude call). pos + n index WordNet 3.1 senses of that part of speech, most common first.",
+  "river": { "pos": "noun", "n": 1 }, "city": { "pos": "noun", "n": 1 }, "road": { "pos": "noun", "n": 1 },
+  "flood": { "pos": "noun", "n": 1 }, "cost": { "pos": "noun", "n": 1 },
+  "channel": { "pos": "noun", "n": 2, "why": "\"the river ran through a concrete channel\"" },
+  "million": { "pos": "noun", "n": 1 }, "budget": { "pos": "noun", "n": 1 }, "project": { "pos": "noun", "n": 1 },
+  "interview": { "pos": "noun", "n": 1 }, "plan": { "pos": "noun", "n": 1 },
+  "construction": { "pos": "noun", "n": 7, "why": "\"construction costs\", \"construction would take eighteen months\"" },
+  "council": { "pos": "noun", "n": 1 }, "work": { "pos": "noun", "n": 1 }, "vote": { "pos": "noun", "n": 1 },
+  "storm": { "pos": "noun", "n": 1 },
+  "last": { "pos": "adj", "n": 1, "why": "\"the last century\", \"the last road works\"" },
+  "concrete": { "pos": "noun", "n": 1 }, "people": { "pos": "noun", "n": 1 },
+  "homes": { "pos": "noun", "n": 2, "why": "\"4,000 homes\" at risk of flooding" }
+}
