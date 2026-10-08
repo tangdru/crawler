@@ -1,7 +1,9 @@
 // The project is saved in this browser (IndexedDB), never uploaded. Every call is
 // wrapped: a private window or blocked storage just means nothing is remembered.
 
-const DB = "reference-crawler", STORE = "projects", KEY = "current";
+// The redesign preview (/next/) shares this site's storage with the live app, so it keeps
+// its project under its own key.
+const DB = "reference-crawler", STORE = "projects", KEY = "redesign";
 
 function open() {
   return new Promise((resolve, reject) => {
