@@ -1,0 +1,18 @@
+name: Rebuild the redesign preview
+
+# Pages only accepts deploys from master. When the redesign branch changes, ask the
+# master deploy to run again; it builds the preview into /next/.
+on:
+  push:
+    branches: [redesign]
+
+permissions:
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh workflow run pages.yml --ref master --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
