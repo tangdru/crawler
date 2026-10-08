@@ -30,7 +30,7 @@ A spider-like crawler reads a document in front of you and shows what it finds.
   page checks each quote against the source text and drops any it can't find word for word.
   Click a quote to read it in context.
 - **Every source in turn**: Trends, Tone and References crawl S1, S2, S3… one after
-  another, then open the Summary. "Finish now" completes all of them at once.
+  another, then open the Summary. "Skip to results" completes all of them at once and opens the Summary.
 - **Summary view** that grows with each lens you run. A scope picker shows all sources
   together, one source, or any combination; the charts re-read the chosen sources as one
   text. Every chart links back to the passage, in the right source.

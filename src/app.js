@@ -247,11 +247,12 @@ function startLens(lens, autoplay = true) {
   setSkipLabel();
   renderWall();
 }
-// While Claude works, "Finish now" has nothing to finish; it cancels the run instead.
+// "Skip to results" skips the rest of the crawl (every remaining source) and opens the
+// Summary. While Claude works there is nothing to skip; the button cancels the run instead.
 function setSkipLabel() {
   const waiting = ui.lens === "scan" && ui.aiRun;
-  $("skip").textContent = waiting ? "Cancel" : "Finish now";
-  $("skip").title = waiting ? "Stop waiting for Claude" : "Apply this lens to the whole document now";
+  $("skip").innerHTML = waiting ? "Cancel" : `${ICONS.skip}<span>Skip to results</span>`;
+  $("skip").title = waiting ? "Stop waiting for Claude" : "Skip the rest of the crawl and see the results";
 }
 
 function chooseLens(lens) {
@@ -291,6 +292,7 @@ const svgIcon = (body) => `<svg viewBox="0 0 16 16" width="16" height="16" aria-
 const ICONS = {
   play: svgIcon('<path d="M4.5 2.8v10.4L13 8z" fill="currentColor"/>'),
   pause: svgIcon('<rect x="3.5" y="2.8" width="3" height="10.4" rx=".8" fill="currentColor"/><rect x="9.5" y="2.8" width="3" height="10.4" rx=".8" fill="currentColor"/>'),
+  skip: svgIcon('<path d="M2.5 3v10l6.5-5z" fill="currentColor"/><path d="M8 3v10l6.5-5z" fill="currentColor"/>'),
   replay: svgIcon('<path d="M13 8a5 5 0 1 1-1.6-3.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12.6 1.6v3.6H9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>')
 };
 // One button: Pause while crawling, Resume part-way, Replay at the end, Play at the start.
@@ -333,7 +335,7 @@ function finished(lens) {
   const q = ui.queue;
   if (q && q.lens === lens) {
     if (q.skipAll) {
-      // "Finish now" during a multi-source crawl applies the lens to every remaining source.
+      // "Skip to results" during a multi-source crawl applies the lens to every remaining source.
       for (const i of q.list.slice(q.pos)) if (project.sources[i]) project.sources[i].ran[lens] = true;
       persist(); renderSourceBar();
     } else if (q.pos < q.list.length - 1) {

@@ -406,3 +406,5 @@ th, td.num { overflow-wrap: normal; white-space: nowrap; }
   .lens-ctl .seg button { padding-left: 7px; padding-right: 7px; }
   .lens-ctl .help-btn { margin-left: 0; flex: none; }
 }
+.skip-btn { display: inline-flex; align-items: center; gap: 7px; height: 30px; }
+.skip-btn svg { width: 12px; height: 12px; display: block; }
