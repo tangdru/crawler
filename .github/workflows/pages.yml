@@ -29,6 +29,15 @@ jobs:
         run: |
           mkdir -p _site
           cp -r index.html styles.css src _site/
+      # Browsers cache Pages files for up to 10 minutes. Stamping each deploy's commit
+      # onto the stylesheet, the app script and every module import makes them fetch
+      # the new files as soon as the page itself is fresh.
+      - name: Stamp file versions
+        run: |
+          V="${GITHUB_SHA::8}"
+          sed -i -E "s#href=\"styles\.css\"#href=\"styles.css?v=$V\"#; s#src=\"src/app\.js\"#src=\"src/app.js?v=$V\"#" _site/index.html
+          sed -i -E "s#(from \"\./[a-z]+\.js)\"#\1?v=$V\"#g" _site/src/*.js
+          grep -q "app.js?v=$V" _site/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
