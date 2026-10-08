@@ -7,6 +7,7 @@ import { EMOTION_KEYS } from "./tone.js";
 import { combine } from "./tone.js";
 import { SUPPORT, KINDS, money } from "./ai.js";
 import { LENS } from "./lenses.js";
+import { locate } from "./combine.js";
 
 const C = {
   surface: "#111119", grid: "#24253a", base: "#3a3b52",
@@ -46,10 +47,20 @@ function barPathLeft(x1, y, len, h, r = 4) {
 }
 
 export class Summary {
-  constructor(root, tip, { jump, ask, askCost, runAI }) {
+  constructor(root, tip, { jump, ask, askCost, combine, runAI }) {
     this.root = root;
     this.tip = tip;
-    this.jump = jump;
+    this.combine = combine;
+    this.scopeKeys = null;   // null = all sources
+    // Charts pass places in the model they draw; a combined model maps back to its sources.
+    this.jump = (a) => {
+      if (a.sourceKey || a.sourceIndex != null) return jump(a);
+      const v = this.view;
+      if (!v) return;
+      if (!v.combined) return jump({ ...a, sourceKey: v.key });
+      const at = locate(v, a);
+      if (at) jump(at);
+    };
     this.ask = ask;
     this.askCost = askCost;
     this.runAI = runAI;
@@ -106,46 +117,59 @@ export class Summary {
   }
 
   // project: { sources, active, ai: { insights, uxr }, asks }. Panels add up as lenses run.
+  // The scope picker chooses which sources the panels describe: one, several or all.
   render(project) {
     this.project = project;
-    const view = project.sources[project.active];
-    const { model, ran } = view;
-    const n = project.sources.length;
-    const srcs = project.sources;
+    const srcs = project.sources, n = srcs.length;
+    const keys = (this.scopeKeys || []).filter((k) => srcs.some((s) => s.key === k));
+    const sel = keys.length ? srcs.filter((s) => keys.includes(s.key)) : srcs;
+    this.inScope = new Set(sel.map((s) => s.key));
+    const all = sel.length === n;
+    const view = sel.length === 1 ? sel[0] : this.combine(sel);
+    this.view = view;
+    const { model } = view;
+    // A lens counts for this view only once it has run on every chosen source.
+    const ran = {}, missing = {};
+    for (const l of ["trends", "tone", "references"]) {
+      ran[l] = sel.every((s) => s.ran[l]);
+      this.ran = ran;
+      missing[l] = sel.filter((s) => !s.ran[l]).map((s) => `S${srcs.indexOf(s) + 1}`);
+    }
+    const anyRan = (s) => s.ran.references || s.ran.trends || s.ran.tone;
+    const any = sel.every(anyRan);
+    const found = srcs.some(anyRan) || project.ai.insights || project.ai.uxr;
     this.root.textContent = "";
-    const anySource = srcs.some((s) => s.ran.references || s.ran.trends || s.ran.tone);
-    const any = ran.references || ran.trends || ran.tone;
-    const found = anySource || project.ai.insights || project.ai.uxr;
     const head = document.createElement("header");
     head.className = "sum-head";
     head.innerHTML = `<div class="eyebrow">Summary · ${n} source${n === 1 ? "" : "s"}</div>
       <h2>${found ? "What the crawler found" : "Run a crawl to build the summary"}</h2>
-      <p class="sub">${found ? "Sections follow the lens order: Trends, Tone, Insights, UXR, References. Each lens you run adds its section; Insights and UXR cover the whole project, the others report on the source you're viewing." : "Pick a lens and press Play. Each lens you run adds its section here, and nothing is lost when you switch. You can ask your sources a question below at any time."}</p>`;
+      <p class="sub">${found ? "Sections follow the lens order: Trends, Tone, Insights, UXR, References. Each lens you run adds its section." : "Pick a lens and press Play. Each lens crawls every source in turn and adds its section here. You can ask your sources a question below at any time."}</p>`;
     this.root.appendChild(head);
+    if (n > 1) this.scopePicker(srcs, sel);
 
-    const scope = n > 1 ? `S${project.active + 1} · ${model.title}. Switch sources with the chips at the top.` : "";
+    const label = (list) => list.map((s) => `S${srcs.indexOf(s) + 1}`).join(" + ");
+    const scope = n === 1 ? "" : all ? `All ${n} sources together.` : sel.length === 1 ? `S${srcs.indexOf(sel[0]) + 1} · ${model.title}.` : `${label(sel)} together.`;
+    const notRun = (l) => `${LENS[l].name} hasn't run on ${missing[l].join(", ")} yet. Choose ${LENS[l].name} to crawl every source, or pick only sources it has run on above.`;
 
-    // Overview: this source's numbers, and the sources side by side
-    if (any || (n > 1 && anySource)) {
-      this.section(n > 1 ? "Overview" : model.title, n > 1 ? `Numbers for ${scope}` : "");
-      if (any) { this.tiles(view); this.root.appendChild(this.grid); }
-      if (n > 1 && anySource) this.sourcesTable(project);
+    if (any) {
+      this.section(n > 1 ? "Overview" : model.title, scope);
+      this.tiles(view, sel.length);
+      this.root.appendChild(this.grid);
+      if (sel.length > 1) this.sourcesTable(project, sel);
     }
 
-    const withTrends = srcs.filter((s) => s.ran.trends);
-    if (ran.trends || withTrends.length >= 2) {
-      this.section("Trends", ran.trends ? scope : "Trends hasn't run on this source yet; showing the comparison across sources where it has.");
-      if (ran.trends) { this.keywords(view); this.termTrends(view); this.topicStrip(view); this.cooc(view); }
-      if (withTrends.length >= 2) this.keywordHeat(project, withTrends);
-    }
+    if (ran.trends) {
+      this.section("Trends", sel.length > 1 ? `${scope} Rising and fading follow the text in source order (${label(sel)}).` : scope);
+      this.keywords(view); this.termTrends(view); this.topicStrip(view); this.cooc(view);
+      if (sel.length >= 2) this.keywordHeat(project, sel);
+    } else if (sel.some((s) => s.ran.trends)) this.section("Trends", notRun("trends"));
 
-    const withTone = srcs.filter((s) => s.ran.tone);
-    if (ran.tone || withTone.length >= 2) {
-      this.section("Tone", ran.tone ? scope : "Tone hasn't run on this source yet; showing the comparison across sources where it has.");
-      if (ran.tone) { this.moodLine(view); this.emotionHeat(view); this.hedgeLines(view); this.uncited(view); }
-      if (ran.trends && ran.tone) this.moodByTopic(view);
-      if (withTone.length >= 2) this.moodBySource(project, withTone);
-    }
+    if (ran.tone) {
+      this.section("Tone", scope);
+      this.moodLine(view); this.emotionHeat(view); this.hedgeLines(view); this.uncited(view);
+      if (ran.trends) this.moodByTopic(view);
+      if (sel.length >= 2) this.moodBySource(project, sel);
+    } else if (sel.some((s) => s.ran.tone)) this.section("Tone", notRun("tone"));
 
     this.insightsSection(project);
     if (project.ai.uxr) this.uxrSection(project);
@@ -159,6 +183,43 @@ export class Summary {
     }
   }
 
+  // All, or any combination of sources. Tapping a source while All is on shows that source
+  // alone; tapping more adds them.
+  scopePicker(srcs, sel) {
+    const bar = document.createElement("div");
+    bar.className = "scope";
+    const all = sel.length === srcs.length;
+    const btn = (label, title, on, onClick) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "scope-chip" + (on ? " on" : "");
+      b.setAttribute("aria-pressed", String(on));
+      b.innerHTML = label; b.title = title;
+      b.addEventListener("click", onClick);
+      bar.appendChild(b);
+    };
+    bar.innerHTML = `<span class="scope-label">Show</span>`;
+    btn("All sources", "Every source together", all, () => this.setScope(null));
+    srcs.forEach((s, i) => {
+      const on = !all && sel.includes(s);
+      btn(`<b>S${i + 1}</b> ${esc(s.model.title.length > 28 ? s.model.title.slice(0, 27) + "…" : s.model.title)}`, s.model.title, on, () => {
+        let keys = all ? [s.key] : on ? sel.filter((x) => x !== s).map((x) => x.key) : [...sel.map((x) => x.key), s.key];
+        if (!keys.length || keys.length === srcs.length) keys = null;
+        this.setScope(keys);
+      });
+    });
+    const hint = document.createElement("span");
+    hint.className = "scope-hint";
+    hint.textContent = all ? "Tap a source to see it alone; tap more to combine." : "Tap sources to add or remove them.";
+    bar.appendChild(hint);
+    this.root.appendChild(bar);
+  }
+  setScope(keys) {
+    this.scopeKeys = keys;
+    const y = window.scrollY;
+    this.render(this.project);
+    window.scrollTo(0, y);
+  }
+
   /* ---------- project level: Claude ---------- */
   // Section intro for a Claude result: coverage, stale sources, removed quotes.
   aiNote(res, project, name) {
@@ -167,6 +228,7 @@ export class Summary {
     const missing = project.sources.filter((s) => !res.sourceKeys.includes(s.key)).length;
     const notes = [`Across ${covered} source${covered === 1 ? "" : "s"}. Found by Claude, then checked by this page: every quote below appears word for word in its source; click one to read it in context.`];
     if (missing) notes.push(`${missing} source${missing === 1 ? " was" : "s were"} added after this run; run ${name} again to include ${missing === 1 ? "it" : "them"}.`);
+    if (this.inScope.size < project.sources.length) notes.push(`Showing findings quoted from ${project.sources.filter((s) => this.inScope.has(s.key)).map((s) => `S${project.sources.indexOf(s) + 1}`).join(" + ")}; the overview covers every source.`);
     if (res.dropped) notes.push(`${res.dropped} quote${res.dropped === 1 ? "" : "s"} couldn't be found word for word and ${res.dropped === 1 ? "was" : "were"} removed.`);
     return notes.join(" ");
   }
@@ -174,10 +236,10 @@ export class Summary {
   srcIndex() { return new Map(this.project.sources.map((s, i) => [s.key, i])); }
 
   // Clickable verified quotes. `stance` shows For/Against labels (tensions, agreement).
-  evidenceList(evs, { stance = false, labels = ["For", "Against"] } = {}) {
+  evidenceList(evs, { stance = false, labels = ["For", "Against"], scoped = true } = {}) {
     const idx = this.srcIndex();
     const ul = document.createElement("ul"); ul.className = "evidence";
-    const list = evs.filter((e) => idx.has(e.sourceKey));
+    const list = evs.filter((e) => idx.has(e.sourceKey) && (!scoped || this.inScope.has(e.sourceKey)));
     const ordered = stance ? [...list].sort((a, b) => (a.stance > b.stance ? -1 : 1)) : list;
     for (const e of ordered) {
       const i = idx.get(e.sourceKey);
@@ -194,6 +256,7 @@ export class Summary {
 
   // A finding card: optional number and swatch, title, chips (strings or {text, color}), summary, quotes.
   card(parent, { num, color, title, chips = [], text, extra, evs, stance, labels }) {
+    if (evs && !this.has(evs)) return null;   // nothing quoted from the sources in view
     const card = document.createElement("article");
     card.className = "theme-card";
     const chipHtml = chips.filter(Boolean).map((c) => typeof c === "string" ? `<span class="chip">${esc(c)}</span>` : `<span class="chip" style="border-color:${c.color}"><i class="dot" style="background:${c.color}"></i>${esc(c.text)}</span>`).join("");
@@ -208,8 +271,9 @@ export class Summary {
     const wrap = document.createElement("div"); wrap.className = "theme-cards"; body.appendChild(wrap);
     return wrap;
   }
+  has(evs) { return evs.some((e) => this.inScope.has(e.sourceKey)); }
   sourcesOf(evs) {
-    const n = new Set(evs.map((e) => e.sourceKey)).size, total = this.project.sources.length;
+    const n = new Set(evs.filter((e) => this.inScope.has(e.sourceKey)).map((e) => e.sourceKey)).size, total = this.inScope.size;
     return total > 1 ? `${n} of ${total} sources` : "";
   }
 
@@ -228,8 +292,9 @@ export class Summary {
       const p = document.createElement("p"); p.className = "overview"; p.textContent = res.gist; gist.appendChild(p);
       const kp = this.cards("Key points", "The points that matter most, each with the passages that make it.");
       for (const k of res.keyPoints) this.card(kp, { num: k.id + 1, color: k.color, title: k.text, chips: [this.sourcesOf(k.evidence)], evs: k.evidence });
-      if (res.claims.length) this.claimsPanel(res);
-      if (res.voices.length) this.voicesPanel(res);
+      const scoped = { ...res, claims: res.claims.filter((c) => this.has(c.evidence)), voices: res.voices.filter((v) => this.has(v.evidence)) };
+      if (scoped.claims.length) this.claimsPanel(scoped);
+      if (scoped.voices.length) this.voicesPanel(scoped);
       if (res.agreement.length) {
         const ag = this.cards("Where the sources agree and disagree", "Topics more than one source covers. Quotes are marked by which side they take.");
         const STATUS = { agree: { text: "Agree", color: "#3987e5" }, disagree: { text: "Disagree", color: "#e66767" }, mixed: { text: "Mixed", color: "#c98500" } };
@@ -335,7 +400,7 @@ export class Summary {
         if (!pt.evidence.length) continue;
         const d = document.createElement("div"); d.className = "apoint";
         d.innerHTML = `<p>${esc(pt.text)}</p>`;
-        d.appendChild(this.evidenceList(pt.evidence, { stance: pt.evidence.some((e) => e.stance === "contradicts") }));
+        d.appendChild(this.evidenceList(pt.evidence, { stance: pt.evidence.some((e) => e.stance === "contradicts"), scoped: false }));
         box.appendChild(d);
       }
       body.appendChild(box);
@@ -352,10 +417,10 @@ export class Summary {
     const n = project.sources.length;
     const th = this.cards("Themes and evidence", "Most important first. Tensions show quotes from both sides.");
     for (const t of res.themes) {
-      const evs = t.evidence.filter((e) => this.srcIndex().has(e.sourceKey));
+      const evs = t.evidence.filter((e) => this.inScope.has(e.sourceKey));
       this.card(th, { num: t.id + 1, color: t.color, title: t.title, chips: [t.kind === "tension" ? { text: "Tension", color: "#e66767" } : null, t.prevalence, this.sourcesOf(evs), `${evs.length} quote${evs.length === 1 ? "" : "s"}`], text: t.summary, evs, stance: t.kind === "tension" });
     }
-    if (n > 1) this.themeMatrix(project, res);
+    if (this.inScope.size > 1) this.themeMatrix(project, res);
 
     const SEV = { high: "#e66767", medium: "#c98500", low: "#8c8a9a" };
     const pains = (res.painPoints || []).slice().sort((a, b) => ["high", "medium", "low"].indexOf(a.severity) - ["high", "medium", "low"].indexOf(b.severity));
@@ -386,35 +451,37 @@ export class Summary {
   themeMatrix(project, res) {
     const body = this.panel("Which sources support which theme", "Quotes per theme in each source. Empty cells mean the theme doesn't appear there. Click a cell to read the first quote.", true);
     const W = this.width(body);
-    const n = project.sources.length;
+    const cols = project.sources.filter((x) => this.inScope.has(x.key));
+    const n = cols.length;
     const lab = Math.min(300, W * 0.45), cw = Math.max(34, Math.min(70, (W - lab - 8) / n)), ch = 28, top = 40;
     const s = svg(lab + n * cw + 8, top + res.themes.length * ch + 4);
-    project.sources.forEach((src, j) => {
-      el(s, "text", { x: lab + j * cw + cw / 2, y: 16, "text-anchor": "middle", class: "t-value" }, `S${j + 1}`);
+    cols.forEach((src, j) => {
+      el(s, "text", { x: lab + j * cw + cw / 2, y: 16, "text-anchor": "middle", class: "t-value" }, `S${project.sources.indexOf(src) + 1}`);
       el(s, "text", { x: lab + j * cw + cw / 2, y: 31, "text-anchor": "middle", class: "t-axis" }, src.model.title.length > 9 ? src.model.title.slice(0, 8) + "…" : src.model.title);
     });
-    const max = Math.max(1, ...res.themes.map((t) => Math.max(...project.sources.map((src) => t.evidence.filter((e) => e.sourceKey === src.key).length))));
+    const max = Math.max(1, ...res.themes.map((t) => Math.max(...cols.map((src) => t.evidence.filter((e) => e.sourceKey === src.key).length))));
     res.themes.forEach((t, i) => {
       const y = top + i * ch;
       el(s, "rect", { x: 0, y: y + 9, width: 8, height: 8, rx: 2, fill: t.color });
       el(s, "text", { x: 14, y: y + 17, class: "t-label" }, (t.id + 1) + ". " + (t.title.length > Math.floor(lab / 7.2) ? t.title.slice(0, Math.floor(lab / 7.2) - 1) + "…" : t.title));
-      project.sources.forEach((src, j) => {
+      cols.forEach((src, j) => {
         const evs = t.evidence.filter((e) => e.sourceKey === src.key);
         const v = evs.length;
         const k = v ? Math.min(C.seq.length - 1, 1 + Math.floor((v / max) * (C.seq.length - 1.01))) : 0;
         const r = el(s, "rect", { x: lab + j * cw + 2, y: y + 2, width: cw - 4, height: ch - 4, rx: 3, fill: C.seq[k] });
         if (v) el(s, "text", { x: lab + j * cw + cw / 2, y: y + ch / 2 + 4, "text-anchor": "middle", class: k >= 4 ? "t-dark" : "t-value", "pointer-events": "none" }, v);
-        this.hover(r, `<b>${esc(t.title)}</b><br>S${j + 1} · ${esc(src.model.title)}<br>${v} quote${v === 1 ? "" : "s"}${v ? `<br><span class="muted">“${esc(evs[0].quote.slice(0, 120))}”</span>` : ""}`,
+        this.hover(r, `<b>${esc(t.title)}</b><br>S${project.sources.indexOf(src) + 1} · ${esc(src.model.title)}<br>${v} quote${v === 1 ? "" : "s"}${v ? `<br><span class="muted">“${esc(evs[0].quote.slice(0, 120))}”</span>` : ""}`,
           v ? () => this.jump({ sourceKey: src.key, sentence: evs[0].sentence }) : null);
       });
     });
     body.appendChild(s);
   }
 
-  sourcesTable(project) {
-    const body = this.panel("Sources", "One row per source. Keyword and mood columns fill in once Trends or Tone has run on that source. Click a row to view it.", true);
+  sourcesTable(project, sel) {
+    const body = this.panel("Sources", "One row per source in this view. Keyword and mood columns fill in once Trends or Tone has run on that source. Click a row to read it.", true);
     const wrap = document.createElement("div"); wrap.className = "twrap";
-    const rows = project.sources.map((src, i) => {
+    const rows = sel.map((src) => {
+      const i = project.sources.indexOf(src);
       const m = src.model;
       const kw = src.ran.trends ? src.trends.top.slice(0, 3).map((e) => e.term).join(", ") : "";
       const mood = src.ran.tone ? src.tone.totals.mean : null;
@@ -470,11 +537,13 @@ export class Summary {
     body.appendChild(s);
   }
 
-  tiles(state) {
-    const { model, ran, trends, tone } = state;
+  tiles(state, count = 1) {
+    const { model, trends, tone } = state;
+    const ran = this.ran;
     const row = document.createElement("div");
     row.className = "tiles";
     const items = [
+      ...(count > 1 ? [["Sources", String(count)]] : []),
       ["Words", model.wordCount.toLocaleString("en-US")],
       ["Sentences", model.sentences.length.toLocaleString("en-US")],
       ["References found", model.entities.length.toLocaleString("en-US")],
@@ -815,7 +884,8 @@ export class Summary {
   }
 
   quotes(state) {
-    const { model, ran, tone } = state;
+    const { model, tone } = state;
+    const ran = this.ran;
     const qs = model.entities.filter((e) => e.type === "quote");
     if (!qs.length) return;
     const body = this.panel("Quotes and who said them", ran.tone ? "Quoted passages with the speaker found nearby, and the tone of the sentence around each." : "Quoted passages with the speaker found nearby. Run Tone to add the tone of each.");

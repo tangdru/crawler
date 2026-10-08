@@ -13,6 +13,7 @@ import { entitiesCsv, sentencesCsv, termsCsv, insightsCsv, uxrCsv, zipAll, saveF
 import { request, verifyInsights, verifyUxr, verifyAsk, upgradeUxr, cardsFor, indexFor, pruneSource, estimate, money, checkReady, isAI, AI_LENSES, AI_NAME } from "./ai.js";
 import { saveProject, loadProject } from "./project.js";
 import { LENSES, LENS } from "./lenses.js";
+import { combine } from "./combine.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -37,7 +38,7 @@ const crawler = new Crawler({
   onEvidence: (card) => wallPulse(card),
   getCardPos: (id) => cardPos(id)
 });
-const summary = new Summary($("summaryView"), $("tip"), { jump, ask, askCost, runAI: (lens) => chooseLens(lens) });
+const summary = new Summary($("summaryView"), $("tip"), { jump, ask, askCost, combine, runAI: (lens) => chooseLens(lens) });
 
 /* ---------- sources ---------- */
 function makeSource(doc, key = newKey(), ran = {}) {
@@ -64,9 +65,9 @@ function addSources(docs, { replace = false } = {}) {
   if (onlySamples && made.some((m) => !(m.doc.meta && m.doc.meta.sample))) replace = true;
   if (replace) { project.sources = []; project.ai = { insights: null, uxr: null }; project.asks = []; }
   project.sources.push(...made);
-  project.active = project.sources.length - made.length;
   persist();
-  showSource(project.active);
+  const first = project.sources.length - made.length;
+  crawlInTurn(ui.lens, made.map((_, k) => first + k));
 }
 
 function removeSource(i) {
@@ -105,7 +106,7 @@ function renderSourceBar() {
     chip.className = "src-chip" + (i === project.active ? " on" : "");
     const lensDots = ["trends", "tone", "references"].filter((l) => src.ran[l]).map((l) => `<i class="ld ${l}" title="${l} has run"></i>`).join("");
     chip.innerHTML = `<button type="button" class="pick" title="${esc(src.model.title)}"><b>S${i + 1}</b> ${esc(src.model.title.length > 34 ? src.model.title.slice(0, 33) + "…" : src.model.title)} ${lensDots}</button><button type="button" class="rm" aria-label="Remove ${esc(src.model.title)}">×</button>`;
-    chip.querySelector(".pick").addEventListener("click", () => { if (i !== project.active) showSource(i); });
+    chip.querySelector(".pick").addEventListener("click", () => { if (i !== project.active) { ui.queue = null; showSource(i); } });
     chip.querySelector(".rm").addEventListener("click", () => removeSource(i));
     bar.appendChild(chip);
   });
@@ -194,6 +195,7 @@ function openSample(name) {
 
 /* ---------- lenses ---------- */
 function startLens(lens, autoplay = true) {
+  if (ui.queue && ui.queue.lens !== lens) ui.queue = null;   // another lens ends a crawl-in-turn
   ui.lens = lens;
   ui.resumeOnReturn = false;
   const shown = lens === "scan" ? (ui.aiRun ? ui.aiRun.lens : "insights") : lens;
@@ -222,7 +224,24 @@ function chooseLens(lens) {
     openAiSheet(lens);
     return;
   }
-  startLens(lens);
+  crawlInTurn(lens, project.sources.map((_, i) => i));
+}
+
+// Trends, Tone and References crawl every source in turn (S1, S2, …) and open the Summary
+// once the last one is done. The Claude lenses already read the whole project at once.
+function crawlInTurn(lens, list) {
+  if (isAI(lens) && !project.ai[lens]) lens = "trends";
+  if (isAI(lens) || list.length < 2) { ui.queue = null; showSource(list[0] ?? 0, { lens }); return; }
+  ui.queue = { lens, list, pos: 0 };
+  showSource(list[0], { lens });
+}
+function nextInTurn() {
+  const q = ui.queue;
+  if (!q) return;
+  if (ui.view !== "doc") { q.waiting = true; return; }   // continue when the document is back in view
+  q.waiting = false;
+  q.pos++;
+  showSource(q.list[q.pos], { lens: q.lens });
 }
 
 function setPlaying(v) {
@@ -258,6 +277,25 @@ function finished(lens) {
   const first = key && !src.ran[key];
   if (key) { src.ran[key] = true; persist(); renderSourceBar(); }
   playLabel();
+  const q = ui.queue;
+  if (q && q.lens === lens) {
+    if (q.skipAll) {
+      // "Finish now" during a multi-source crawl applies the lens to every remaining source.
+      for (const i of q.list.slice(q.pos)) if (project.sources[i]) project.sources[i].ran[lens] = true;
+      persist(); renderSourceBar();
+    } else if (q.pos < q.list.length - 1) {
+      const nxt = project.sources[q.list[q.pos + 1]];
+      toast(`S${q.list[q.pos] + 1} done · next: S${q.list[q.pos + 1] + 1} ${nxt.model.title.slice(0, 40)}`);
+      setTimeout(() => { if (ui.queue === q && crawler.done) nextInTurn(); }, 1100);
+      return;
+    }
+    ui.queue = null;
+    hud(crawler.progress());
+    if (ui.view === "summary") summary.render(project);
+    toast(`${LENS[lens].name} done for all ${q.list.length} sources`);
+    setTimeout(() => { if (crawler.done && ui.view === "doc" && crawler.lens === lens) setView("summary"); }, 1400);
+    return;
+  }
   if (ui.view === "summary") summary.render(project);
   toast(isAI(lens) ? `${AI_NAME[lens]} ${lens === "uxr" ? "is" : "are"} in the summary` : first ? `${lens[0].toUpperCase() + lens.slice(1)} added to the summary` : "Summary updated");
   setTimeout(() => { if (crawler.done && ui.view === "doc" && crawler.lens === lens) setView("summary"); }, 1400);
@@ -500,6 +538,7 @@ function hud(p) {
     else add("thinking…", "hchip", col);
     return;
   }
+  if (ui.queue) add(`source <b>${ui.queue.pos + 1}</b> of ${ui.queue.list.length}`, "stat");
   add(`S${project.active + 1} read <b>${p.idx.toLocaleString("en-US")}</b>/${p.total.toLocaleString("en-US")}`, "stat");
   if (p.lens === "references") {
     const n = Object.values(p.counts).reduce((a, b) => a + b, 0);
@@ -583,13 +622,15 @@ document.querySelectorAll("[data-lens]").forEach((b) => b.addEventListener("clic
 document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => {
   if (b.dataset.view === "summary") pauseForAway();
   setView(b.dataset.view);
-  if (b.dataset.view === "doc") resumeIfAway();
+  if (b.dataset.view === "doc") { if (ui.queue && ui.queue.waiting) nextInTurn(); else resumeIfAway(); }
 }));
 $("play").addEventListener("click", () => { setView("doc"); setPlaying(!crawler.playing); });
 $("speed").addEventListener("change", (e) => { crawler.speed = parseFloat(e.target.value); });
 $("skip").addEventListener("click", () => {
   if (ui.lens === "scan" && ui.aiRun) { ui.aiRun.ctl.abort("cancel"); return; }
+  if (ui.queue) ui.queue.skipAll = true;
   if (project.sources.length && !crawler.done) { setView("doc"); crawler.skip(); }
+  else if (ui.queue) finished(ui.lens);
 });
 $("addSource").addEventListener("click", openSheet);
 $("helpBtn").addEventListener("click", openHelp);
@@ -683,7 +724,7 @@ setHead();
     if (!project.sources.length) addSources([SAMPLES.article()], { replace: true });
     openFrom("url", params.get("url"));
   } else if (project.sources.length) {
-    showSource(project.active);
+    crawlInTurn(ui.lens, project.sources.map((_, i) => i));
   } else {
     openSample("river");
   }

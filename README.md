@@ -29,8 +29,11 @@ A spider-like crawler reads a document in front of you and shows what it finds.
 - **Checked quotes**: every finding from Claude cites sentences with verbatim quotes. The
   page checks each quote against the source text and drops any it can't find word for word.
   Click a quote to read it in context.
-- **Summary view** that grows with each lens you run, plus combined panels once both
-  Trends and Tone have run. Every chart links back to the passage.
+- **Every source in turn**: Trends, Tone and References crawl S1, S2, S3… one after
+  another, then open the Summary. "Finish now" completes all of them at once.
+- **Summary view** that grows with each lens you run. A scope picker shows all sources
+  together, one source, or any combination; the charts re-read the chosen sources as one
+  text. Every chart links back to the passage, in the right source.
 - **CSV export**: `entities.csv`, `sentences.csv`, `terms.csv`, `insights.csv` and
   `uxr.csv` (one row per finding and quote), or all of them as a zip. Every file has source
   columns. Columns from lenses you haven't run stay empty, so the layout never changes.

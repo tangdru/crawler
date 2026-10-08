@@ -45,7 +45,10 @@ function cleanSegs(segs) {
   return out.filter((s) => s.text);
 }
 
-export function buildModel(doc) {
+// opts.maxWords raises the length cap (a combined view of several sources). A block may
+// carry `host`, the page it came from, so links are classified as they were in that page.
+export function buildModel(doc, opts = {}) {
+  const maxWords = opts.maxWords || MAX_WORDS;
   const model = {
     title: doc.title || "Untitled",
     meta: doc.meta || {},
@@ -59,7 +62,7 @@ export function buildModel(doc) {
   const startSection = (title, block) => { model.sections.push({ id: model.sections.length, title, block }); section = model.sections.length - 1; };
 
   for (const raw of doc.blocks) {
-    if (model.wordCount >= MAX_WORDS) { model.truncated = true; break; }
+    if (model.wordCount >= maxWords) { model.truncated = true; break; }
     const segs = cleanSegs(raw.segs || [{ text: raw.text || "" }]);
     if (!segs.length) continue;
     const text = segs.map((s) => s.text).join("");
@@ -145,7 +148,7 @@ export function buildModel(doc) {
     // entities from link targets, when the visible text did not already carry them
     for (const r of segRanges) {
       if (!r.href) continue;
-      const type = classifyHref(r.href, pageHost);
+      const type = classifyHref(r.href, raw.host ?? pageHost);
       if (!type) continue;
       const covered = matches.some((m) => ENTITY_TYPES[m.type].atomic && m.start < r.end && m.end > r.start);
       if (covered) continue;
