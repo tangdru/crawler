@@ -1,10 +1,11 @@
 name: Deploy site to GitHub Pages
 
 # The live app comes from master and is served at the site root. The redesign branch,
-# when it exists, is served alongside it at /next/ as a preview.
+# when it exists, is served alongside it at /next/ as a preview. Only master may deploy
+# to Pages, so a push to redesign asks this workflow to run (see preview.yml).
 on:
   push:
-    branches: [master, redesign]
+    branches: [master]
   workflow_dispatch:
 
 permissions:
