@@ -156,7 +156,7 @@ export class Summary {
     this.ranMap = {
       insights: running === "insights" ? "running" : !!project.ai.insights,
       uxr: running === "uxr" ? "running" : !!project.ai.uxr,
-      tone: ran.tone, trends: ran.trends, references: any
+      tone: ran.tone, trends: ran.trends, references: ran.references
     };
     // Sticky bar: which sources to show, and a jump row to each lens's section.
     const nav = document.createElement("div");
@@ -195,16 +195,14 @@ export class Summary {
       if (sel.length >= 2) this.keywordHeat(project, sel);
     } else blank("trends");
 
-    if (any) {
-      this.section("References", `Collected by the reference pass, which runs under every lens. ${scope}`);
+    // References is a lens of its own: its section fills in only once it has run.
+    if (ran.references) {
+      this.section("References", scope);
       this.quotes(view);
       this.entityBars(view);
       this.yearColumns(view);
       this.entityTable(view);
-    } else {
-      this.section("References", "");
-      this.runStrip("references", sel.some(anyRan) ? `The reference pass hasn't run on ${sel.filter((s) => !anyRan(s)).map((s) => `S${srcs.indexOf(s) + 1}`).join(", ")} yet. Any lens collects references; run References to see them found.` : "Not run yet. Free and instant; the reference pass also runs quietly under every other lens.", "Run References");
-    }
+    } else blank("references");
   }
 
   // A lens that hasn't run here: one line and a button, rather than an empty panel.
@@ -689,7 +687,7 @@ export class Summary {
       ...(count > 1 ? [["Sources", String(count)]] : []),
       ["Words", model.wordCount.toLocaleString("en-US")],
       ["Sentences", model.sentences.length.toLocaleString("en-US")],
-      ["References found", model.entities.length.toLocaleString("en-US")],
+      ...(ran.references ? [["References found", model.entities.length.toLocaleString("en-US")]] : []),
       ["Reading time", `${Math.max(1, Math.round(model.wordCount / 238))} min`]
     ];
     if (ran.trends && trends.top[0]) items.push(["Top keyword", trends.top[0].term]);

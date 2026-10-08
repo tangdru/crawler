@@ -1,6 +1,5 @@
 // The crawler: a spider-like walker that reads the rendered document token by token,
-// with a different set of effects per lens. The reference pass runs under every lens;
-// only the References lens shows it loudly.
+// with a different set of effects per lens.
 
 import { ENTITY_TYPES } from "./references.js";
 
@@ -140,9 +139,9 @@ export class Crawler {
 
   read(t, loud) {
     const m = this.model;
-    // quiet reference pass, every lens
+    // References are marked only by the References lens.
     const ents = m.entityAt.get(t.i);
-    if (ents) for (const e of ents) this.markEntity(e, loud && this.lens === "references");
+    if (ents && this.lens === "references") for (const e of ents) this.markEntity(e, loud);
 
     if (this.lens === "scan") {
       this.readSkim(t, loud);

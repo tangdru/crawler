@@ -24,8 +24,7 @@ A spider-like crawler reads a document in front of you and shows what it finds.
   - **Trends**: TF-IDF keywords, terms rising or fading through the text, topics
     (k-means over paragraphs) and keyword co-occurrence.
   - **References**: DOIs, ISBNs, PubMed/arXiv/JSTOR IDs, Bibcodes, links, citations, quotes
-    (with speakers), authors, dates, figures and page ranges. This pass also runs quietly
-    under every other lens.
+    (with speakers), authors, dates, figures and page ranges.
 - **Checked quotes**: every finding from Claude cites sentences with verbatim quotes. The
   page checks each quote against the source text and drops any it can't find word for word.
   Click a quote to read it in context.

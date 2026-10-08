@@ -1,5 +1,5 @@
-// Reference grammar: the identifiers, citations and quoted material the quiet pass
-// collects under every lens. Pure pattern matching, no guessing.
+// Reference grammar: the identifiers, citations and quoted material the References lens
+// finds. Pure pattern matching, no guessing.
 
 export const ENTITY_TYPES = {
   doi:     { label: "DOI",      color: "#33e1ff", fx: "callout", atomic: true },

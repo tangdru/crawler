@@ -47,7 +47,7 @@ export const LENSES = [
     id: "references", name: "References", accent: "#ffd84d",
     question: "What does it cite, and who is quoted?",
     finds: ["DOIs, ISBNs, PubMed, arXiv and other IDs", "Links, citations and reference lists", "Quotes and who said them", "Dates, figures and page ranges"],
-    how: "Pattern matching in your browser; also runs quietly under every other lens",
+    how: "Pattern matching in your browser",
     cost: "Free, instant",
     scope: "One source at a time",
     best: "Papers, Wikipedia, reference lists, fact-checking",
