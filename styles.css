@@ -288,7 +288,8 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; }
 .proj-list button:hover { color: var(--danger); }
 
 /* iOS zooms into any text field under 16px when it gets focus. Keep fields at 16px. */
-input[type="text"], input[type="url"], textarea, select { font-size: 16px; }
+input[type="text"], input[type="url"], textarea { font-size: 16px; }
+@media (max-width: 700px) and (pointer: coarse) { select { font-size: 16px; } }
 .source-bar .src-add { flex: none; }
 @media (max-width: 700px) {
   .src-chip { max-width: 190px; }
@@ -315,7 +316,7 @@ th, td.num { overflow-wrap: normal; white-space: nowrap; }
 .apoint p { margin: 0 0 8px; font-size: 13.5px; color: var(--ink-hi); }
 
 /* ---------- lens guide ---------- */
-.help-btn { width: 30px; padding: 0; border-radius: 50%; font: 600 13px var(--f-mono); color: var(--ink-2); margin-left: 6px; }
+.help-btn { width: 30px; height: 30px; padding: 0; font: 600 12px/1 var(--f-mono); color: var(--ink-2); margin-left: 6px; }
 .help-btn:hover { color: var(--ink-hi); }
 .sheet .card.wide-card { width: min(980px, 100%); }
 .lens-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -383,5 +384,11 @@ th, td.num { overflow-wrap: normal; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .shimmer, .stage.active .mark, .lp.writing > p::after, .lp.writing li:last-child::after { animation: none; } }
 
 /* play / pause / replay as icons */
-.icon-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; padding-left: 0; padding-right: 0; color: var(--ink-hi); }
-.icon-btn svg { display: block; }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 30px; padding: 0; color: var(--ink-hi); }
+.icon-btn svg { display: block; width: 13px; height: 13px; }
+
+/* speed menu: same height and type as the buttons, with its own caret */
+#speed {
+  -webkit-appearance: none; appearance: none; height: 30px; padding: 0 24px 0 10px;
+  background: var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238c8a9a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 9px center;
+}
