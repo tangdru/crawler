@@ -78,6 +78,7 @@ export async function request(mode, sources, question, onProgress, signal) {
     if (signal && signal.aborted) throw aborted(signal);
     throw new Error("Couldn't reach Claude. This works on the app's own site (tangdru.github.io/crawler); check your connection.");
   }
+  if (res.ok) onProgress && onProgress({ seconds: 0, chars: 0, text: "", phase: "sent" });
   if (!res.ok) {
     let msg = `Claude couldn't run (error ${res.status}).`;
     try { const j = await res.json(); if (j.error) msg = j.error; } catch {}
@@ -103,7 +104,7 @@ export async function request(mode, sources, question, onProgress, signal) {
       else if (ev.t === "delta") text += ev.d;
       else if (ev.t === "error") throw new Error(ev.error);
       else if (ev.t === "done") done = ev;
-      onProgress && onProgress({ seconds, chars: text.length });
+      onProgress && onProgress({ seconds, chars: text.length, text, phase: text ? "writing" : "thinking" });
     }
   }
   if (!done) throw new Error("Claude stopped before finishing. With many long sources it can run out of time; try fewer sources.");
@@ -231,4 +232,47 @@ export function pruneSource(lens, r, key) {
   }
   const main = lens === "uxr" ? r.themes : r.keyPoints;
   return main.length ? r : null;
+}
+
+/* ---------- live preview ---------- */
+// Parse a JSON answer that is still being written: cut back to the last complete value
+// and close whatever is open. Returns null until something parses.
+export function parsePartial(text) {
+  if (!text) return null;
+  const closers = (str) => {
+    const stack = [];
+    let inStr = false, esc = false;
+    for (const ch of str) {
+      if (inStr) { if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === '"') inStr = false; continue; }
+      if (ch === '"') inStr = true;
+      else if (ch === "{" || ch === "[") stack.push(ch === "{" ? "}" : "]");
+      else if (ch === "}" || ch === "]") stack.pop();
+    }
+    return { inStr, tail: stack.reverse().join("") };
+  };
+  const tryParse = (str) => {
+    const c = closers(str);
+    let body = str + (c.inStr ? '"' : "");
+    body = body.replace(/,\s*$/, "").replace(/,?\s*"[^"]*"\s*:?\s*$/, (m) => (/:\s*$/.test(m) || !c.inStr ? "" : m));
+    try { return JSON.parse(body + closers(body).tail); } catch { return null; }
+  };
+  const whole = tryParse(text);
+  if (whole) return whole;
+  // Fall back to the last few safe cut points: just before a comma, or after a close.
+  let tries = 0;
+  for (let i = text.length - 1; i > 0 && tries < 40; i--) {
+    const ch = text[i];
+    if (ch !== "," && ch !== "}" && ch !== "]") continue;
+    tries++;
+    const got = tryParse(ch === "," ? text.slice(0, i) : text.slice(0, i + 1));
+    if (got) return got;
+  }
+  return null;
+}
+
+// Rough size of a finished answer, for the "writing" percentage. Measured on the
+// three-source sample: about 22k characters of JSON for Insights and UXR.
+export function expectedChars(sources, mode) {
+  const est = estimate(sources, mode);
+  return Math.min(90000, 18000 + est.chars * 0.12);
 }

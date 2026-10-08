@@ -47,7 +47,9 @@ function barPathLeft(x1, y, len, h, r = 4) {
 }
 
 export class Summary {
-  constructor(root, tip, { jump, ask, askCost, combine, runAI }) {
+  constructor(root, tip, { jump, ask, askCost, combine, runAI, cancelRun }) {
+    this.cancelRun = cancelRun;
+    this.run = null;   // a Claude run in progress: { lens, phase, text, preview, … }
     this.root = root;
     this.tip = tip;
     this.combine = combine;
@@ -277,8 +279,77 @@ export class Summary {
     return total > 1 ? `${n} of ${total} sources` : "";
   }
 
+  /* ----- a Claude run in progress: stages, clock and a live preview ----- */
+  liveSection() {
+    const body = this.panel("Claude is working", "Preview while Claude writes. Quotes are checked against your text when it finishes; any that don't match are dropped.", true);
+    const top = document.createElement("div"); top.className = "live-top";
+    top.innerHTML = `<span class="spin" aria-hidden="true"></span><span class="live-clock" data-clock>0:00</span>`;
+    const cancel = document.createElement("button"); cancel.type = "button"; cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => this.cancelRun && this.cancelRun());
+    top.appendChild(cancel);
+    const stages = document.createElement("ol"); stages.className = "live-stages";
+    const preview = document.createElement("div"); preview.className = "live-preview";
+    body.append(top, stages, preview);
+    this.live = { body, stages, preview, clock: top.querySelector("[data-clock]") };
+    this.updateLive();
+  }
+
+  updateLive() {
+    const r = this.run, L = this.live;
+    if (!r || !L || !L.body.isConnected) return;
+    const secs = Math.floor((performance.now() - r.started) / 1000);
+    L.clock.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+    const order = ["sending", "sent", "thinking", "writing", "checking"];
+    const at = order.indexOf(r.phase);
+    const pct = Math.min(95, Math.round((r.chars / r.expected) * 100));
+    const thought = r.writingAt ? Math.round((r.writingAt - r.started) / 1000) : null;
+    const stage = (state, title, detail, extra = "") => `<li class="stage ${state}"><span class="mark" aria-hidden="true"></span><div><b>${title}</b>${detail ? ` <span>${detail}</span>` : ""}${extra}</div></li>`;
+    const st = (from, to) => (at > to ? "done" : at >= from ? "active" : "pending");
+    L.stages.innerHTML =
+      stage(st(0, 0), "Sending your sources", `${r.sources} source${r.sources === 1 ? "" : "s"} · about ${Math.round(r.inTok / 1000)}k tokens`) +
+      stage(st(1, 2), "Thinking", thought != null ? `${thought}s` : at >= 1 ? "reading and planning" : "") +
+      stage(st(3, 3), "Writing findings", at >= 3 ? `${at > 3 ? 100 : pct}% · ${(r.chars / 1000).toFixed(1)}k characters` : "",
+        at >= 3 ? `<div class="live-bar"><i style="width:${at > 3 ? 100 : pct}%"></i></div>` : "") +
+      stage(st(4, 4), "Checking quotes against your text", "");
+    L.preview.innerHTML = this.previewHtml(r);
+  }
+
+  // What Claude has written so far, laid out like the finished section. The section being
+  // written gets a caret; sections still to come show as placeholders.
+  previewHtml(r) {
+    const p = r.preview || {};
+    const parts = r.lens === "uxr" ? [
+      ["overview", "Key findings", (v) => `<p>${esc(v)}</p>`],
+      ["themes", "Themes", (v) => this.liveList(v, (t) => `<b>${esc(t.title || "")}</b>${t.summary ? ` <span>${esc(t.summary)}</span>` : ""}${t.kind === "tension" ? ' <em class="chip">Tension</em>' : ""}`)],
+      ["pain_points", "Pain points", (v) => this.liveList(v, (t) => `<b>${esc(t.title || "")}</b>${t.severity ? ` <em class="chip">${esc(t.severity)}</em>` : ""}`)],
+      ["segments", "Who's in these sources", (v) => this.liveList(v, (t) => `<b>${esc(t.name || "")}</b>${t.description ? ` <span>${esc(t.description)}</span>` : ""}`)],
+      ["jobs", "Jobs to be done", (v) => this.liveList(v, (t) => esc(t.job || ""))],
+      ["opportunities", "Opportunities", (v) => this.liveList(v, (t) => `<b>${esc(t.title || "")}</b>`)],
+      ["open_questions", "Open questions", (v) => this.liveList(v, (t) => esc(t.question || ""))]
+    ] : [
+      ["gist", "The gist", (v) => `<p>${esc(v)}</p>`],
+      ["key_points", "Key points", (v) => this.liveList(v, (t) => `<b>${esc(t.point || "")}</b>${t.evidence && t.evidence[0] ? ` <q>${esc(t.evidence[0].quote || "")}</q>` : ""}`)],
+      ["claims", "Claims and how well they're backed", (v) => this.liveList(v, (t) => `${esc(t.claim || "")}${t.support && SUPPORT[t.support] ? ` <em class="chip" style="border-color:${SUPPORT[t.support].color}">${SUPPORT[t.support].label}</em>` : ""}${t.kind && KINDS[t.kind] ? ` <em class="chip">${KINDS[t.kind]}</em>` : ""}`)],
+      ["voices", "Who says what", (v) => this.liveList(v, (t) => `<b>${esc(t.name || "")}</b>${t.position ? ` <span>${esc(t.position)}</span>` : ""}`)],
+      ["agreement", "Where the sources agree and disagree", (v) => this.liveList(v, (t) => `<b>${esc(t.topic || "")}</b>${t.status ? ` <em class="chip">${esc(t.status)}</em>` : ""}`)],
+      ["missing", "What's missing or one-sided", (v) => this.liveList(v, (t) => esc(t.gap || ""))]
+    ];
+    const present = parts.filter(([k]) => p[k] != null && (!Array.isArray(p[k]) || p[k].length));
+    const writing = r.phase === "writing" && present.length ? present[present.length - 1][0] : null;
+    return parts.map(([k, title, fn]) => {
+      const v = p[k];
+      const has = v != null && (!Array.isArray(v) || v.length);
+      if (!has) return `<section class="lp pending"><h4>${title}</h4><div class="shimmer"></div><div class="shimmer short"></div></section>`;
+      return `<section class="lp${k === writing ? " writing" : ""}"><h4>${title}${Array.isArray(v) ? ` <span>${v.length}</span>` : ""}</h4>${fn(v)}</section>`;
+    }).join("");
+  }
+  liveList(items, fn) {
+    return `<ul>${items.map((t) => `<li>${fn(t || {})}</li>`).join("")}</ul>`;
+  }
+
   /* ----- Insights: plain-language analysis for any reader ----- */
   insightsSection(project) {
+    if (this.run && this.run.lens === "insights") { this.section("Insights", "Claude is reading your sources. Findings appear below as they're written."); this.liveSection(); this.askPanel(project); return; }
     const res = project.ai.insights;
     this.section("Insights", res ? this.aiNote(res, project, "Insights") : "A plain-language read of your sources by Claude: the gist, the main claims and how well each is backed, who says what, and what's missing. Every point comes with quotes checked against your text.");
     if (!res) {
@@ -409,6 +480,7 @@ export class Summary {
 
   /* ----- UXR: research synthesis ----- */
   uxrSection(project) {
+    if (this.run && this.run.lens === "uxr") { this.section("UXR", "Claude is reading your sources. Findings appear below as they're written."); this.liveSection(); return; }
     const res = project.ai.uxr;
     if (!res) {
       // Not run yet: a slim prompt, since UXR is a separate, specialist run.

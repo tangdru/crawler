@@ -345,3 +345,39 @@ th, td.num { overflow-wrap: normal; white-space: nowrap; }
 .scope-chip.on { border-color: var(--accent, var(--magenta)); color: var(--ink-hi); background: var(--panel-2); }
 .scope-hint { font-size: 12px; color: var(--ink-dim); margin-left: 4px; }
 @media (max-width: 700px) { .scope { position: static; } .scope-chip { max-width: 170px; } .scope-hint { flex-basis: 100%; margin: 2px 0 0; } }
+
+/* skimming while Claude reads: the sentence being read, and sentences tagged as likely to matter */
+.w.skim, .e.skim { background: color-mix(in srgb, var(--accent, #46f08a) 14%, transparent); transition: background .25s; }
+.w.noted, .e.noted { background: color-mix(in srgb, var(--accent, #46f08a) 8%, transparent); }
+.w.skim, .e.skim { background: color-mix(in srgb, var(--accent, #46f08a) 18%, transparent); }
+
+/* ---------- live Claude run in the Summary ---------- */
+.live-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.live-clock { font: 600 15px var(--f-mono); color: var(--ink-hi); font-variant-numeric: tabular-nums; margin-right: auto; }
+.live-stages { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 8px; }
+.stage { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; color: var(--ink-dim); }
+.stage b { font-weight: 600; }
+.stage span { font: 12px var(--f-mono); color: var(--ink-dim); }
+.stage .mark { flex: none; width: 14px; height: 14px; margin-top: 2px; border-radius: 50%; border: 2px solid var(--ink-faint); }
+.stage.active { color: var(--ink-hi); }
+.stage.active .mark { border-color: var(--ink-faint); border-top-color: #46f08a; animation: spin .8s linear infinite; }
+.stage.done { color: var(--ink-2); }
+.stage.done .mark { border-color: #46f08a; background: #46f08a; box-shadow: inset 0 0 0 2px var(--panel); }
+.stage > div { flex: 1; min-width: 0; }
+.live-bar { height: 4px; background: var(--panel-2); border-radius: 2px; margin-top: 6px; overflow: hidden; max-width: 420px; }
+.live-bar i { display: block; height: 100%; background: #46f08a; transition: width .4s; }
+.live-preview { display: grid; gap: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
+.lp h4 { margin: 0 0 6px; font: 600 13px var(--f-body); color: var(--ink-hi); }
+.lp h4 span { font: 11px var(--f-mono); color: var(--ink-dim); margin-left: 6px; }
+.lp p { margin: 0; font-size: 14px; line-height: 1.55; color: var(--ink-hi); max-width: 80ch; }
+.lp ul { margin: 0; padding-left: 18px; display: grid; gap: 5px; font-size: 13px; line-height: 1.45; color: var(--ink-2); }
+.lp li b { color: var(--ink-hi); font-weight: 600; }
+.lp q { color: var(--ink-dim); font-style: italic; }
+.lp .chip { font-style: normal; font-size: 11px; padding: 0 5px; margin-left: 4px; }
+.lp.writing > p::after, .lp.writing li:last-child::after { content: "▍"; color: #46f08a; animation: blink 1s steps(2) infinite; margin-left: 2px; }
+.lp.pending h4 { color: var(--ink-dim); }
+.shimmer { height: 10px; border-radius: 3px; margin: 6px 0; max-width: 520px; background: linear-gradient(90deg, var(--panel-2) 0%, #262638 50%, var(--panel-2) 100%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+.shimmer.short { max-width: 300px; }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .shimmer, .stage.active .mark, .lp.writing > p::after, .lp.writing li:last-child::after { animation: none; } }

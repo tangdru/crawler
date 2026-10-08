@@ -30,7 +30,7 @@ export class Crawler {
     this.body = { x: 0, y: 0, vx: 0, vy: 0 };
     this.gaze = { x: 0, y: 0 };
     this.legs = [];
-    this.idx = 0; this.dwell = 0;
+    this.idx = 0; this.dwell = 0; this.skimSent = -1;
     this.userScrollUntil = 0;
     this.lastT = performance.now();
     this.visible = true;
@@ -112,7 +112,11 @@ export class Crawler {
 
   /* ---------- reading ---------- */
   dwellFor(t) {
-    if (this.lens === "scan") return 0.012 + Math.min(t.text.length, 12) * 0.003;
+    if (this.lens === "scan") {
+      const tag = this.a.skimTags && this.a.skimTags.get(t.sentence);
+      if (tag && this.model.sentences[t.sentence].tokStart === t.i) return 0.35;
+      return 0.012 + Math.min(t.text.length, 12) * 0.003;
+    }
     if (this.lens === "insights" || this.lens === "uxr") {
       const hit = this.a.aiIndex && this.a.aiIndex.get(t.sentence);
       if (hit && this.model.sentences[t.sentence].tokStart === t.i) return 0.7;
@@ -140,7 +144,9 @@ export class Crawler {
     const ents = m.entityAt.get(t.i);
     if (ents) for (const e of ents) this.markEntity(e, loud && this.lens === "references");
 
-    if (this.lens === "references" || this.lens === "scan") {
+    if (this.lens === "scan") {
+      this.readSkim(t, loud);
+    } else if (this.lens === "references") {
       if (!t.atomic) t.el.classList.add("read");
     } else if (this.lens === "insights" || this.lens === "uxr") {
       this.readFindings(t, loud);
@@ -148,6 +154,31 @@ export class Crawler {
       this.readTrends(t, loud);
     } else {
       this.readTone(t, loud);
+    }
+  }
+
+  // Skimming while Claude reads: light up the sentence being read and tag the ones likely
+  // to matter (a guess from quotes, figures and wording; Claude picks the real findings).
+  readSkim(t, loud) {
+    if (!t.atomic) t.el.classList.add("read");
+    const m = this.model;
+    if (this.skimSent !== t.sentence) {
+      const prev = m.sentences[this.skimSent];
+      if (prev) for (let k = prev.tokStart; k < prev.tokEnd; k++) m.tokens[k].el && m.tokens[k].el.classList.remove("skim");
+      this.skimSent = t.sentence;
+      const sent = m.sentences[t.sentence];
+      if (!sent) return;
+      const tag = this.a.skimTags && this.a.skimTags.get(t.sentence);
+      for (let k = sent.tokStart; k < sent.tokEnd; k++) {
+        const el = m.tokens[k].el;
+        if (!el) continue;
+        el.classList.add("skim");
+        if (tag) el.classList.add("noted");
+      }
+      if (tag && loud && this.effects.length < 40) {
+        this.effects.push({ kind: "tag", t, text: "", label: tag, color: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#46f08a", born: performance.now(), life: 1400 });
+        this.grab(t);
+      }
     }
   }
 

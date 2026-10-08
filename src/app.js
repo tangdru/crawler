@@ -10,7 +10,7 @@ import { loadFile, loadUrl, fromText, sandboxed } from "./loaders.js";
 import { SAMPLES, SAMPLE_PROJECTS } from "./samples.js";
 import { ENTITY_TYPES } from "./references.js";
 import { entitiesCsv, sentencesCsv, termsCsv, insightsCsv, uxrCsv, zipAll, saveFile, slug } from "./export.js";
-import { request, verifyInsights, verifyUxr, verifyAsk, upgradeUxr, cardsFor, indexFor, pruneSource, estimate, money, checkReady, isAI, AI_LENSES, AI_NAME } from "./ai.js";
+import { request, parsePartial, expectedChars, verifyInsights, verifyUxr, verifyAsk, upgradeUxr, cardsFor, indexFor, pruneSource, estimate, money, checkReady, isAI, AI_LENSES, AI_NAME } from "./ai.js";
 import { saveProject, loadProject } from "./project.js";
 import { LENSES, LENS } from "./lenses.js";
 import { combine } from "./combine.js";
@@ -23,7 +23,7 @@ const LENS_TEXT = {
   tone: "Tone: blue wash = positive wording, red = negative. Dimmed italics are hedges; underlined words sound certain; emotion words get a label.",
   insights: "Insights: the crawler stops on each quote Claude used. Key points pin to the wall; claims are tinted by how well they're backed (blue backed, amber hedged, red asserted).",
   uxr: "UXR: the crawler stops on each quote Claude used as evidence, pins it to its theme on the wall, and flags pain points.",
-  scan: "Claude is reading every source. The crawler skims each one once while it works."
+  scan: "Claude is reading every source. The crawler skims each one and tags sentences that look important (quotes, figures, claims, voices). These are guesses; Claude picks the real findings."
 };
 const LENS_ACCENT = { references: "#ffd84d", trends: "#33e1ff", tone: "#ff3fd8", insights: "#46f08a", uxr: "#b58cff", scan: "#46f08a" };
 
@@ -38,7 +38,7 @@ const crawler = new Crawler({
   onEvidence: (card) => wallPulse(card),
   getCardPos: (id) => cardPos(id)
 });
-const summary = new Summary($("summaryView"), $("tip"), { jump, ask, askCost, combine, runAI: (lens) => chooseLens(lens) });
+const summary = new Summary($("summaryView"), $("tip"), { jump, ask, askCost, combine, runAI: (lens) => chooseLens(lens), cancelRun: () => ui.aiRun && ui.aiRun.ctl.abort("cancel") });
 
 /* ---------- sources ---------- */
 function makeSource(doc, key = newKey(), ran = {}) {
@@ -95,7 +95,45 @@ function showSource(i, { autoplay = true, lens } = {}) {
 
 function analysesFor(src) {
   const lens = isAI(ui.lens) ? ui.lens : null;
-  return { trends: src.trends, tone: src.tone, aiIndex: lens ? indexFor(cardsFor(lens, project.ai[lens]), src.key) : new Map() };
+  return {
+    trends: src.trends, tone: src.tone,
+    aiIndex: lens ? indexFor(cardsFor(lens, project.ai[lens]), src.key) : new Map(),
+    skimTags: ui.lens === "scan" && ui.skim ? skimTags(src, ui.skim.lens) : null
+  };
+}
+
+// While Claude reads, the skim tags sentences that are likely to matter. These are guesses
+// from the text itself (quotes, figures, confident wording, first-person voices), not
+// Claude's findings, and the HUD says so.
+const FIRST_PERSON = /\b(i|i'm|i've|my|we|we're|our|us)\b/i;
+const NEED = /\b(want|wants|need|needs|wish|hope|would like|should|worry|worried|afraid|can't|cannot|struggle)\b/i;
+function skimTags(src, lens) {
+  const m = src.model, tone = src.tone, scored = [];
+  const ents = new Map();
+  for (const e of m.entities) { if (!ents.has(e.sentence)) ents.set(e.sentence, new Set()); ents.get(e.sentence).add(e.type); }
+  for (const s of m.sentences) {
+    if (s.wordCount < 4) continue;
+    const t = tone.sentences[s.id], e = ents.get(s.id) || new Set();
+    const emo = t ? Object.values(t.emo).reduce((a, b) => a + b, 0) : 0;
+    let tag = null, score = 0;
+    if (lens === "uxr") {
+      if (NEED.test(s.text)) { tag = "need"; score = 3; }
+      else if (emo > 0 && FIRST_PERSON.test(s.text)) { tag = "feeling"; score = 2 + emo; }
+      else if (FIRST_PERSON.test(s.text)) { tag = "voice"; score = 2; }
+    } else {
+      if (t && t.uncitedConfident) { tag = "claim"; score = 4; }
+      else if (e.has("quote")) { tag = "quote"; score = 3; }
+      else if (e.has("figure")) { tag = "figure"; score = 2 + (t && t.boosters ? 1 : 0); }
+      else if (t && t.boosters > 0) { tag = "claim"; score = 2; }
+      else if (t && t.hedges > 1) { tag = "hedge"; score = 1; }
+    }
+    if (tag) scored.push({ id: s.id, tag, score: score + Math.min(1, s.wordCount / 40) });
+  }
+  // Keep it selective: roughly the strongest quarter of sentences.
+  const keep = Math.max(3, Math.round(m.sentences.length * 0.25));
+  const tags = new Map();
+  for (const x of scored.sort((a, b) => b.score - a.score).slice(0, keep)) tags.set(x.id, x.tag);
+  return tags;
 }
 
 function renderSourceBar() {
@@ -198,7 +236,7 @@ function startLens(lens, autoplay = true) {
   if (ui.queue && ui.queue.lens !== lens) ui.queue = null;   // another lens ends a crawl-in-turn
   ui.lens = lens;
   ui.resumeOnReturn = false;
-  const shown = lens === "scan" ? (ui.aiRun ? ui.aiRun.lens : "insights") : lens;
+  const shown = lens === "scan" ? (ui.skim ? ui.skim.lens : ui.aiRun ? ui.aiRun.lens : "insights") : lens;
   document.querySelectorAll("[data-lens]").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.lens === shown)));
   document.documentElement.style.setProperty("--accent", LENS_ACCENT[shown]);
   setView("doc");
@@ -219,7 +257,7 @@ function setSkipLabel() {
 function chooseLens(lens) {
   if (!project.sources.length) return;
   if (isAI(lens)) {
-    if (ui.aiRun) { if (ui.aiRun.lens === lens) startLens("scan"); else toast(`Claude is still working on ${AI_NAME[ui.aiRun.lens]}. One run at a time.`); return; }
+    if (ui.aiRun) { if (ui.aiRun.lens === lens) showSummaryAt(lens); else toast(`Claude is still working on ${AI_NAME[ui.aiRun.lens]}. One run at a time.`); return; }
     if (project.ai[lens] && aiCurrent(lens)) { startLens(lens); return; }
     openAiSheet(lens);
     return;
@@ -263,13 +301,17 @@ function resumeIfAway() {
 
 function finished(lens) {
   if (lens === "scan") {
-    // Skim each source once, then wait at the end of the last one for Claude's answer.
-    const r = ui.aiRun;
-    if (!r) return;
-    r.skimmed.add(project.active);
-    const next = project.sources.findIndex((_, i) => !r.skimmed.has(i));
-    if (next >= 0) showSource(next, { lens: "scan" });
-    else $("hudLine").textContent = "Done skimming. Claude is still writing; results appear here as soon as they arrive.";
+    // Skim each source once, then open the Summary, like the other lenses. If Claude is
+    // still writing, the Summary shows its progress and a live preview.
+    const sk = ui.skim;
+    if (!sk) return;
+    if (ui.view !== "doc") { ui.skim = null; return; }
+    sk.skimmed.add(project.active);
+    const next = project.sources.findIndex((_, i) => !sk.skimmed.has(i));
+    if (next >= 0 && !sk.skipAll) { showSource(next, { lens: "scan" }); return; }
+    ui.skim = null;
+    playLabel();
+    setTimeout(() => { if (ui.view === "doc" && ui.lens === "scan") showSummaryAt(sk.lens); }, 700);
     return;
   }
   const src = active();
@@ -361,31 +403,50 @@ async function runAI() {
   $("aiSheet").hidden = true;
   const sources = project.sources.slice();
   const ctl = new AbortController();
-  const from = project.active;
-  ui.aiRun = { lens, started: performance.now(), chars: 0, seconds: 0, skimmed: new Set(), ctl };
-  // The HUD otherwise updates only as the crawler moves; keep the clock running while it waits.
-  const tick = setInterval(() => { if (ui.lens === "scan") hud(crawler.progress()); }, 1000);
+  const run = ui.aiRun = {
+    lens, ctl, started: performance.now(), seconds: 0, chars: 0, text: "", phase: "sending", preview: null,
+    expected: expectedChars(sources, lens), sources: sources.length, inTok: estimate(sources, lens).inTok
+  };
+  summary.run = run;
+  ui.skim = { lens, skimmed: new Set() };
+  // The HUD and the live Summary otherwise update only when something moves; keep the clock running.
+  const tick = setInterval(() => { if (ui.lens === "scan") hud(crawler.progress()); if (ui.view === "summary") summary.updateLive(); }, 1000);
   const limit = setTimeout(() => ctl.abort("timeout"), 240000);
-  startLens("scan");
+  let lastPreview = 0;
+  showSource(0, { lens: "scan" });
   try {
-    const raw = await request(lens, sources, question, (p) => { if (ui.aiRun) { ui.aiRun.chars = p.chars; ui.aiRun.seconds = p.seconds; } }, ctl.signal);
+    const raw = await request(lens, sources, question, (p) => {
+      run.phase = p.phase; run.seconds = p.seconds; run.chars = p.chars; run.text = p.text;
+      if (run.phase === "writing" && !run.writingAt) run.writingAt = performance.now();
+      const now = performance.now();
+      if (now - lastPreview > 450) {
+        lastPreview = now;
+        if (p.text) run.preview = parsePartial(p.text) || run.preview;
+        if (ui.view === "summary") summary.updateLive();
+      }
+    }, ctl.signal);
+    run.phase = "checking";
+    if (ui.view === "summary") summary.updateLive();
     const checked = lens === "uxr" ? verifyUxr(raw, sources) : verifyInsights(raw, sources);
     const main = lens === "uxr" ? checked.themes : checked.keyPoints;
     if (!main.length) throw new Error("Claude's answer had no quotes that could be found in the text, so nothing is shown. Try again.");
     project.ai[lens] = { ...checked, question, sourceKeys: sources.map((s) => s.key), model: raw.model, usage: raw.usage, at: new Date().toISOString() };
     ui.aiRun = null;
+    summary.run = null;
+    ui.lastAI = lens;
     persist();
     const u = raw.usage || {};
     const found = lens === "uxr" ? `${checked.themes.length} themes, ${checked.painPoints.length} pain points` : `${checked.keyPoints.length} key points, ${checked.claims.length} claims`;
-    if (project.active !== from && project.sources[from]) showSource(from, { autoplay: false, lens: "trends" });
-    toast(`${found}${checked.dropped ? `; ${checked.dropped} unverifiable quote${checked.dropped === 1 ? "" : "s"} removed` : ""} · ${(u.input_tokens || 0).toLocaleString("en-US")} in / ${(u.output_tokens || 0).toLocaleString("en-US")} out tokens`);
-    startLens(lens);
+    toast(`${AI_NAME[lens]}: ${found}${checked.dropped ? `; ${checked.dropped} unverifiable quote${checked.dropped === 1 ? "" : "s"} removed` : ""}`);
+    if (ui.view === "summary") rerenderSummary();
   } catch (err) {
     const cancelled = ctl.signal.aborted && ctl.signal.reason !== "timeout";
     ui.aiRun = null;
+    summary.run = null;
+    ui.skim = null;
     console.error(err);
-    if (project.active !== from && project.sources[from]) showSource(from, { autoplay: false, lens: "trends" });
-    startLens("trends", false);
+    if (ui.view === "summary") rerenderSummary();
+    else if (ui.lens === "scan") startLens("trends", false);
     if (cancelled) { toast(`${AI_NAME[lens]} cancelled.`); return; }
     ui.sheetLens = lens;
     $("aiError").textContent = err.message || String(err);
@@ -396,6 +457,20 @@ async function runAI() {
     clearTimeout(limit);
     setSkipLabel();
   }
+}
+
+// Open the Summary scrolled to a lens's section.
+function showSummaryAt(lens) {
+  setView("summary");
+  requestAnimationFrame(() => {
+    const h = [...document.querySelectorAll("#summaryView .sec-head h2")].find((x) => x.textContent === AI_NAME[lens] || x.textContent.toLowerCase() === lens);
+    if (h) window.scrollTo(0, h.getBoundingClientRect().top + window.scrollY - (document.querySelector(".bar").offsetHeight + 12));
+  });
+}
+function rerenderSummary() {
+  const y = window.scrollY;
+  summary.render(project);
+  window.scrollTo(0, y);
 }
 
 // Ask your sources: one question, answered only from verified quotes. Called from the summary.
@@ -530,6 +605,7 @@ function hud(p) {
   if (p.lens === "scan") {
     const r = ui.aiRun;
     const secs = r ? Math.round((performance.now() - r.started) / 1000) : 0;
+    if (!r) { add("Claude is done · finishing the skim, then the Summary", "stat"); return; }
     add(`Claude is reading ${project.sources.length} source${project.sources.length === 1 ? "" : "s"}`, "stat");
     add(`<b>${secs}s</b>`, "stat");
     const col = r ? LENS_ACCENT[r.lens] : "#46f08a";
@@ -622,12 +698,17 @@ document.querySelectorAll("[data-lens]").forEach((b) => b.addEventListener("clic
 document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => {
   if (b.dataset.view === "summary") pauseForAway();
   setView(b.dataset.view);
-  if (b.dataset.view === "doc") { if (ui.queue && ui.queue.waiting) nextInTurn(); else resumeIfAway(); }
+  if (b.dataset.view === "doc") {
+    if (ui.queue && ui.queue.waiting) nextInTurn();
+    else if (ui.lens === "scan" && !ui.skim && !ui.aiRun && ui.lastAI && project.ai[ui.lastAI]) startLens(ui.lastAI);
+    else resumeIfAway();
+  }
 }));
 $("play").addEventListener("click", () => { setView("doc"); setPlaying(!crawler.playing); });
 $("speed").addEventListener("change", (e) => { crawler.speed = parseFloat(e.target.value); });
 $("skip").addEventListener("click", () => {
   if (ui.lens === "scan" && ui.aiRun) { ui.aiRun.ctl.abort("cancel"); return; }
+  if (ui.lens === "scan" && ui.skim) { ui.skim.skipAll = true; if (!crawler.done) crawler.skip(); else finished("scan"); return; }
   if (ui.queue) ui.queue.skipAll = true;
   if (project.sources.length && !crawler.done) { setView("doc"); crawler.skip(); }
   else if (ui.queue) finished(ui.lens);
