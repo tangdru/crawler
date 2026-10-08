@@ -1,8 +1,10 @@
 name: Deploy site to GitHub Pages
 
+# The live app comes from master and is served at the site root. The redesign branch,
+# when it exists, is served alongside it at /next/ as a preview.
 on:
   push:
-    branches: [master]
+    branches: [master, redesign]
   workflow_dispatch:
 
 permissions:
@@ -22,22 +24,37 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: master
+          path: main
+      - uses: actions/checkout@v4
+        id: next
+        continue-on-error: true
+        with:
+          ref: redesign
+          path: next
       - uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Collect site files
-        run: |
-          mkdir -p _site
-          cp -r index.html styles.css src _site/
-      # Browsers cache Pages files for up to 10 minutes. Stamping each deploy's commit
+      # Browsers cache Pages files for up to 10 minutes. Stamping each build's commit
       # onto the stylesheet, the app script and every module import makes them fetch
       # the new files as soon as the page itself is fresh.
-      - name: Stamp file versions
+      - name: Collect site files and stamp versions
         run: |
-          V="${GITHUB_SHA::8}"
-          sed -i -E "s#href=\"styles\.css\"#href=\"styles.css?v=$V\"#; s#src=\"src/app\.js\"#src=\"src/app.js?v=$V\"#" _site/index.html
-          sed -i -E "s#(from \"\./[a-z]+\.js)\"#\1?v=$V\"#g" _site/src/*.js
-          grep -q "app.js?v=$V" _site/index.html
+          stamp() {
+            dir="$1"; V="$(git -C "$2" rev-parse --short=8 HEAD)"
+            sed -i -E "s#href=\"styles\.css\"#href=\"styles.css?v=$V\"#; s#src=\"src/app\.js\"#src=\"src/app.js?v=$V\"#" "$dir/index.html"
+            sed -i -E "s#(from \"\./[a-z]+\.js)\"#\1?v=$V\"#g" "$dir"/src/*.js
+            grep -q "app.js?v=$V" "$dir/index.html"
+          }
+          mkdir -p _site
+          cp -r main/index.html main/styles.css main/src _site/
+          stamp _site main
+          if [ "${{ steps.next.outcome }}" = "success" ]; then
+            mkdir -p _site/next
+            cp -r next/index.html next/styles.css next/src _site/next/
+            stamp _site/next next
+          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
