@@ -14,7 +14,7 @@
 
 <header class="bar">
   <div class="brand">Reference Crawler</div>
-  <div class="ctl">
+  <div class="ctl lens-ctl">
     <div class="seg" role="radiogroup" aria-label="Lens">
       <button type="button" role="radio" data-lens="insights" aria-checked="false" title="Claude: the gist, claims and how well they're backed, who says what">Insights</button>
       <button type="button" role="radio" data-lens="uxr" aria-checked="false" title="Claude: UX research synthesis: themes, pain points, personas, jobs to be done">UXR</button>
@@ -25,12 +25,6 @@
     <button type="button" id="helpBtn" class="help-btn" aria-label="What do the lenses do?" title="What do the lenses do?">?</button>
   </div>
   <div class="ctl">
-    <button id="play" class="icon-btn" type="button" aria-label="Pause" title="Pause"></button>
-    <select id="speed" aria-label="Reading speed">
-      <option value="0.5">0.5×</option><option value="1">1×</option><option value="2" selected>2×</option>
-      <option value="4">4×</option><option value="8">8×</option><option value="16">16×</option>
-    </select>
-    <button id="skip" type="button" title="Apply this lens to the whole document now">Finish now</button>
     <div class="seg" role="tablist" aria-label="View">
       <button type="button" role="tab" data-view="doc" aria-selected="true">Document</button>
       <button type="button" role="tab" data-view="summary" aria-selected="false">Summary</button>
@@ -69,7 +63,15 @@
 <section id="summaryView" class="summary" hidden></section>
 
 <footer class="hud" id="hud">
-  <div class="prog"><i id="progBar"></i></div>
+  <div class="player">
+    <button id="play" class="icon-btn" type="button" aria-label="Pause" title="Pause"></button>
+    <select id="speed" aria-label="Reading speed">
+      <option value="0.5">0.5×</option><option value="1">1×</option><option value="2" selected>2×</option>
+      <option value="4">4×</option><option value="8">8×</option><option value="16">16×</option>
+    </select>
+    <button id="skip" type="button" title="Apply this lens to the whole document now">Finish now</button>
+    <div class="prog" role="progressbar" aria-label="Crawl progress"><i id="progBar"></i></div>
+  </div>
   <div class="row" id="hudStats"></div>
   <div class="row"><span class="last" id="hudLine">Loading…</span></div>
 </footer>

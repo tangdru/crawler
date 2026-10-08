@@ -145,13 +145,16 @@ export class Summary {
     head.className = "sum-head";
     head.innerHTML = `<div class="eyebrow">Summary · ${n} source${n === 1 ? "" : "s"}</div>
       <h2>${found ? "What the crawler found" : "Run a crawl to build the summary"}</h2>
-      <p class="sub">${found ? "Read top to bottom: what it says (Insights, UXR), how it says it (Tone), then what it's built from (Trends, References). Each lens you run adds its section." : "Pick a lens and press Play. Each lens crawls every source in turn and adds its section here. You can ask your sources a question below at any time."}</p>`;
+      <p class="sub">${found ? "Read top to bottom: what it says (Insights, UXR), how it says it (Tone), then what it's built from (Trends, References). Each lens you run adds its section." : "Each section below has a Run button: the free lenses crawl every source in your browser, and Insights and UXR ask Claude. You can ask your sources a question at any time."}</p>`;
     this.root.appendChild(head);
     if (n > 1) this.scopePicker(srcs, sel);
 
     const label = (list) => list.map((s) => `S${srcs.indexOf(s) + 1}`).join(" + ");
     const scope = n === 1 ? "" : all ? `All ${n} sources together.` : sel.length === 1 ? `S${srcs.indexOf(sel[0]) + 1} · ${model.title}.` : `${label(sel)} together.`;
-    const notRun = (l) => `${LENS[l].name} hasn't run on ${missing[l].join(", ")} yet. Choose ${LENS[l].name} to crawl every source, or pick only sources it has run on above.`;
+    const notRun = (l) => sel.some((s) => s.ran[l])
+      ? `${LENS[l].name} has run on some of these sources but not ${missing[l].join(", ")}. Run it to include every source, or pick only sources it has run on above.`
+      : "Not run yet. Free and instant: the crawler reads every source in your browser.";
+    const blank = (l) => { this.section(LENS[l].name, ""); this.runStrip(l, notRun(l), `Run ${LENS[l].name}`); };
 
     if (any) {
       this.section(n > 1 ? "Overview" : model.title, scope);
@@ -168,13 +171,13 @@ export class Summary {
       this.moodLine(view); this.emotionHeat(view); this.hedgeLines(view); this.uncited(view);
       if (ran.trends) this.moodByTopic(view);
       if (sel.length >= 2) this.moodBySource(project, sel);
-    } else if (sel.some((s) => s.ran.tone)) this.section("Tone", notRun("tone"));
+    } else blank("tone");
 
     if (ran.trends) {
       this.section("Trends", sel.length > 1 ? `${scope} Rising and fading follow the text in source order (${label(sel)}).` : scope);
       this.keywords(view); this.termTrends(view); this.topicStrip(view); this.cooc(view);
       if (sel.length >= 2) this.keywordHeat(project, sel);
-    } else if (sel.some((s) => s.ran.trends)) this.section("Trends", notRun("trends"));
+    } else blank("trends");
 
     if (any) {
       this.section("References", `Collected by the reference pass, which runs under every lens. ${scope}`);
@@ -182,7 +185,21 @@ export class Summary {
       this.entityBars(view);
       this.yearColumns(view);
       this.entityTable(view);
+    } else {
+      this.section("References", "");
+      this.runStrip("references", sel.some(anyRan) ? `The reference pass hasn't run on ${sel.filter((s) => !anyRan(s)).map((s) => `S${srcs.indexOf(s) + 1}`).join(", ")} yet. Any lens collects references; run References to see them found.` : "Not run yet. Free and instant; the reference pass also runs quietly under every other lens.", "Run References");
     }
+  }
+
+  // A lens that hasn't run here: one line and a button, rather than an empty panel.
+  runStrip(lens, text, label) {
+    const strip = document.createElement("div");
+    strip.className = "run-strip panel wide";
+    const p = document.createElement("p"); p.textContent = text;
+    const b = document.createElement("button"); b.type = "button"; b.className = "primary"; b.textContent = label;
+    b.addEventListener("click", () => this.runAI(lens));
+    strip.append(p, b);
+    this.grid.appendChild(strip);
   }
 
   // All, or any combination of sources. Tapping a source while All is on shows that source
@@ -353,11 +370,7 @@ export class Summary {
     const res = project.ai.insights;
     this.section("Insights", res ? this.aiNote(res, project, "Insights") : "A plain-language read of your sources by Claude: the gist, the main claims and how well each is backed, who says what, and what's missing. Every point comes with quotes checked against your text.");
     if (!res) {
-      const body = this.panel("Find insights", "", true);
-      body.innerHTML = `<p class="overview">Not run yet. It takes 20 seconds to 2 minutes and costs a few cents on your Anthropic account.</p>`;
-      const b = document.createElement("button"); b.type = "button"; b.className = "primary cta"; b.textContent = "Find insights with Claude";
-      b.addEventListener("click", () => this.runAI("insights"));
-      body.appendChild(b);
+      this.runStrip("insights", "Not run yet. Claude reads every source: 20 seconds to 2 minutes, a few cents on your Anthropic account.", "Find insights with Claude");
     } else {
       const gist = this.panel("The gist", res.question ? `You're reading for: ${res.question}` : "", true);
       const p = document.createElement("p"); p.className = "overview"; p.textContent = res.gist; gist.appendChild(p);
@@ -485,11 +498,7 @@ export class Summary {
     if (!res) {
       // Not run yet: a slim prompt, since UXR is a separate, specialist run.
       this.section("UXR", "A UX research read of your sources by Claude: themes with quotes, pain points, the groups of people in your sources, jobs to be done and opportunities. Best for interviews, reviews and survey answers. A separate run from Insights.");
-      const body = this.panel("Run UXR synthesis", "", true);
-      body.innerHTML = `<p class="overview">Not run yet. It takes 20 seconds to 2 minutes and costs a few cents on your Anthropic account.</p>`;
-      const b = document.createElement("button"); b.type = "button"; b.className = "primary cta"; b.textContent = "Run UXR synthesis with Claude";
-      b.addEventListener("click", () => this.runAI("uxr"));
-      body.appendChild(b);
+      this.runStrip("uxr", "Not run yet. Claude reads every source: 20 seconds to 2 minutes, a few cents on your Anthropic account.", "Run UXR synthesis with Claude");
       return;
     }
     this.section("UXR", this.aiNote(res, project, "UXR"));

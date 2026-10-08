@@ -797,6 +797,10 @@ const headEl = document.querySelector(".bar");
 const setHead = () => document.documentElement.style.setProperty("--head-h", headEl.offsetHeight + "px");
 new ResizeObserver(setHead).observe(headEl);
 setHead();
+const hudEl = $("hud");
+const setHud = () => { if (hudEl.offsetHeight) document.documentElement.style.setProperty("--hud-h", hudEl.offsetHeight + "px"); };
+new ResizeObserver(setHud).observe(hudEl);
+setHud();
 
 /* ---------- boot ---------- */
 (async () => {
