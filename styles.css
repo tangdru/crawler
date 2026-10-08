@@ -457,3 +457,5 @@ body.mode-sources main { max-width: calc(68ch + 340px); padding-left: 340px; }
 .spark i { display: block; height: 100%; border-radius: 3px; background: var(--c, var(--cyan)); }
 /* the Analysis page opens straight on the source/jump bar */
 body.mode-analysis .sum-nav { margin-top: 0; }
+/* no rule between the source/jump bar and the first section; the spacing stays */
+.sum-nav + .sec-head { border-top-color: transparent; }
