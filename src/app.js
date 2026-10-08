@@ -287,9 +287,20 @@ function setPlaying(v) {
   crawler.setPlaying(v);
   playLabel();
 }
+const svgIcon = (body) => `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">${body}</svg>`;
+const ICONS = {
+  play: svgIcon('<path d="M4.5 2.8v10.4L13 8z" fill="currentColor"/>'),
+  pause: svgIcon('<rect x="3.5" y="2.8" width="3" height="10.4" rx=".8" fill="currentColor"/><rect x="9.5" y="2.8" width="3" height="10.4" rx=".8" fill="currentColor"/>'),
+  replay: svgIcon('<path d="M13 8a5 5 0 1 1-1.6-3.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12.6 1.6v3.6H9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>')
+};
 // One button: Pause while crawling, Resume part-way, Replay at the end, Play at the start.
 function playLabel() {
-  $("play").textContent = crawler.playing ? "Pause" : crawler.done ? "Replay" : crawler.idx > 0 ? "Resume" : "Play";
+  const state = crawler.playing ? "pause" : crawler.done ? "replay" : "play";
+  const label = crawler.playing ? "Pause" : crawler.done ? "Replay" : crawler.idx > 0 ? "Resume" : "Play";
+  const b = $("play");
+  if (b.dataset.state !== state) { b.dataset.state = state; b.innerHTML = ICONS[state]; }
+  b.setAttribute("aria-label", label);
+  b.title = label;
 }
 // Leaving the crawl (Summary, the Add dialog) pauses it; coming back picks up where it was.
 function pauseForAway() {

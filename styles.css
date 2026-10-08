@@ -381,3 +381,7 @@ th, td.num { overflow-wrap: normal; white-space: nowrap; }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @keyframes blink { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .shimmer, .stage.active .mark, .lp.writing > p::after, .lp.writing li:last-child::after { animation: none; } }
+
+/* play / pause / replay as icons */
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; padding-left: 0; padding-right: 0; color: var(--ink-hi); }
+.icon-btn svg { display: block; }
