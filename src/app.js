@@ -676,10 +676,10 @@ window.addEventListener("keydown", (e) => {
   if (!$("sheet").hidden || !$("aiSheet").hidden || !$("helpSheet").hidden) return;
   if (e.key === "?") { openHelp(); return; }
   if (e.code === "Space") { e.preventDefault(); setView("doc"); setPlaying(!crawler.playing); }
-  else if (e.key === "1") chooseLens("trends");
-  else if (e.key === "2") chooseLens("tone");
-  else if (e.key === "3") chooseLens("insights");
-  else if (e.key === "4") chooseLens("uxr");
+  else if (e.key === "1") chooseLens("insights");
+  else if (e.key === "2") chooseLens("uxr");
+  else if (e.key === "3") chooseLens("tone");
+  else if (e.key === "4") chooseLens("trends");
   else if (e.key === "5") chooseLens("references");
 });
 let resizeTimer = 0;

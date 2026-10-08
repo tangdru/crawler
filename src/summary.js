@@ -85,7 +85,11 @@ export class Summary {
   panel(title, sub, wide) {
     const sec = document.createElement("section");
     sec.className = "panel" + (wide ? " wide" : "");
-    const h = document.createElement("h3"); h.textContent = title; sec.appendChild(h);
+    const h = document.createElement("h3");
+    // A dot in the color the crawler uses for this section's lens ties each plot to its crawl.
+    if (this.lens) { const dot = document.createElement("i"); dot.className = "lens-dot"; dot.style.background = this.lens.accent; dot.style.boxShadow = `0 0 6px ${this.lens.accent}`; dot.title = `${this.lens.name} lens`; h.appendChild(dot); }
+    h.appendChild(document.createTextNode(title));
+    sec.appendChild(h);
     if (sub) { const p = document.createElement("p"); p.className = "sub"; p.textContent = sub; sec.appendChild(p); }
     const body = document.createElement("div"); body.className = "chart"; sec.appendChild(body);
     this.grid.appendChild(sec);
@@ -108,6 +112,7 @@ export class Summary {
     const h = document.createElement("div");
     h.className = "sec-head";
     const lens = LENS[title.toLowerCase()];
+    this.lens = lens || null;
     const what = lens ? `<p class="what">${esc(lens.question)}<span>${lens.claude ? "Claude" : "counted in your browser"}</span></p>` : "";
     h.innerHTML = `<h2>${esc(title)}</h2>${what}${sub ? `<p class="sub">${esc(sub)}</p>` : ""}`;
     this.root.appendChild(h);
@@ -143,7 +148,7 @@ export class Summary {
     head.className = "sum-head";
     head.innerHTML = `<div class="eyebrow">Summary · ${n} source${n === 1 ? "" : "s"}</div>
       <h2>${found ? "What the crawler found" : "Run a crawl to build the summary"}</h2>
-      <p class="sub">${found ? "Sections follow the lens order: Trends, Tone, Insights, UXR, References. Each lens you run adds its section." : "Pick a lens and press Play. Each lens crawls every source in turn and adds its section here. You can ask your sources a question below at any time."}</p>`;
+      <p class="sub">${found ? "Read top to bottom: what it says (Insights, UXR), how it says it (Tone), then what it's built from (Trends, References). Each lens you run adds its section." : "Pick a lens and press Play. Each lens crawls every source in turn and adds its section here. You can ask your sources a question below at any time."}</p>`;
     this.root.appendChild(head);
     if (n > 1) this.scopePicker(srcs, sel);
 
@@ -158,11 +163,8 @@ export class Summary {
       if (sel.length > 1) this.sourcesTable(project, sel);
     }
 
-    if (ran.trends) {
-      this.section("Trends", sel.length > 1 ? `${scope} Rising and fading follow the text in source order (${label(sel)}).` : scope);
-      this.keywords(view); this.termTrends(view); this.topicStrip(view); this.cooc(view);
-      if (sel.length >= 2) this.keywordHeat(project, sel);
-    } else if (sel.some((s) => s.ran.trends)) this.section("Trends", notRun("trends"));
+    this.insightsSection(project);
+    if (project.ai.uxr) this.uxrSection(project);
 
     if (ran.tone) {
       this.section("Tone", scope);
@@ -171,8 +173,11 @@ export class Summary {
       if (sel.length >= 2) this.moodBySource(project, sel);
     } else if (sel.some((s) => s.ran.tone)) this.section("Tone", notRun("tone"));
 
-    this.insightsSection(project);
-    if (project.ai.uxr) this.uxrSection(project);
+    if (ran.trends) {
+      this.section("Trends", sel.length > 1 ? `${scope} Rising and fading follow the text in source order (${label(sel)}).` : scope);
+      this.keywords(view); this.termTrends(view); this.topicStrip(view); this.cooc(view);
+      if (sel.length >= 2) this.keywordHeat(project, sel);
+    } else if (sel.some((s) => s.ran.trends)) this.section("Trends", notRun("trends"));
 
     if (any) {
       this.section("References", `Collected by the reference pass, which runs under every lens. ${scope}`);

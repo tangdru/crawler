@@ -9,12 +9,7 @@ A spider-like crawler reads a document in front of you and shows what it finds.
 - **Projects with many sources:** add web addresses, files (PDF, Word, Excel, PowerPoint,
   EPUB, OpenDocument, HTML, Markdown, text, CSV, JSON, RTF) or pasted text. The project is
   saved in your browser.
-- **Five lenses**, in this order, each with its own crawl effects:
-  - **Trends**: TF-IDF keywords, terms rising or fading through the text, topics
-    (k-means over paragraphs) and keyword co-occurrence.
-  - **Tone**: positive/negative wording, six emotions, hedging vs. certainty, and confident
-    claims with no citation nearby. Word lists written for this project; it counts words
-    and does not understand sarcasm.
+- **Five lenses**, in reading order (what it says, how it says it, what it is built from), each with its own crawl effects:
   - **Insights** (Claude): a plain-language read for anyone. The gist and key points, the
     main claims sorted into fact, opinion or prediction and rated by how the text backs them
     (backed, hedged or asserted), who says what, where sources agree or disagree, and what's
@@ -23,6 +18,11 @@ A spider-like crawler reads a document in front of you and shows what it finds.
   - **UXR** (Claude): UX research synthesis. Themes (affinity mapping) with tensions,
     pain points by severity, groups of people (proto-personas) and their needs, jobs to be
     done, opportunities and open questions.
+  - **Tone**: positive/negative wording, six emotions, hedging vs. certainty, and confident
+    claims with no citation nearby. Word lists written for this project; it counts words
+    and does not understand sarcasm.
+  - **Trends**: TF-IDF keywords, terms rising or fading through the text, topics
+    (k-means over paragraphs) and keyword co-occurrence.
   - **References**: DOIs, ISBNs, PubMed/arXiv/JSTOR IDs, Bibcodes, links, citations, quotes
     (with speakers), authors, dates, figures and page ranges. This pass also runs quietly
     under every other lens.
