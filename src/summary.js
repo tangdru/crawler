@@ -151,14 +151,7 @@ export class Summary {
     }
     const anyRan = (s) => s.ran.references || s.ran.trends || s.ran.tone;
     const any = sel.every(anyRan);
-    const found = srcs.some(anyRan) || project.ai.insights || project.ai.uxr;
     this.root.textContent = "";
-    const head = document.createElement("header");
-    head.className = "sum-head";
-    head.innerHTML = `<div class="eyebrow">Analysis · ${n} source${n === 1 ? "" : "s"}</div>
-      <h2>${found ? "What the crawler found" : "Run a crawl to build the summary"}</h2>
-      <p class="sub">${found ? "Read top to bottom: what it says (Insights, UXR), how it says it (Tone), then what it's built from (Trends, References). Each lens you run adds its section." : "Each section below has a Run button: the free lenses crawl every source in your browser, and Insights and UXR ask Claude. You can ask your sources a question at any time."}</p>`;
-    this.root.appendChild(head);
     const running = this.run ? this.run.lens : null;
     this.ranMap = {
       insights: running === "insights" ? "running" : !!project.ai.insights,
