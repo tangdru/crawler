@@ -15,5 +15,6 @@ Not part of the app yet. Saved so the chosen configuration survives until it is 
    - `rich1`: the same 200 words within one sentence either side, inside the same paragraph.
 3. Distance between keywords: cosine distance between profiles.
 4. UMAP to 2D (5 neighbours, seeded). Tight / medium / loose = minDist 0.02 / 0.25 / 0.8 (loose uses 8 neighbours).
-5. Groups: `net` = Louvain on PPMI for pairs seen in 2+ sentences; `profile` = Louvain on each word's 4 nearest profiles.
-6. "Grouped" spread: tight layout, each word pulled 65% toward its group centre, then nudged apart. Group positions stay UMAP's; spacing inside a group does not carry meaning.
+5. Group names: off. A name is shown only when it is a theme the words imply (e.g. "Flood risk"), never the group's own top words; in the app Claude would suggest them.
+6. Groups: `net` = Louvain on PPMI for pairs seen in 2+ sentences; `profile` = Louvain on each word's 4 nearest profiles.
+7. "Grouped" spread: tight layout, each word pulled 65% toward its group centre, then nudged apart. Group positions stay UMAP's; spacing inside a group does not carry meaning.

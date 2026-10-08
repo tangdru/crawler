@@ -9,7 +9,7 @@
   "size": "freq",
   "opacity": 60,
   "labels": "beside",
-  "groupNames": "on",
+  "groupNames": "off",
   "links": "hover",
   "color": "group",
   "umap": { "metric": "cosine", "nNeighbors": 5, "minDist": 0.02, "nEpochs": 600, "seed": 7 },

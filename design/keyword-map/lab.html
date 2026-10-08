@@ -42,11 +42,12 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .t-node { fill: var(--ink); font: 600 12px var(--f-body); paint-order: stroke; stroke: var(--panel); stroke-width: 4px; stroke-linejoin: round; }
 .t-in { fill: var(--ink); font: 600 12px var(--f-body); paint-order: stroke; stroke: rgba(10,10,15,.55); stroke-width: 3px; stroke-linejoin: round; }
-.t-group { font: 600 10.5px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; fill: var(--ink-2); paint-order: stroke; stroke: var(--panel); stroke-width: 4px; }
+.t-group { font: italic 600 13px var(--f-body); fill: var(--ink-2); paint-order: stroke; stroke: var(--panel); stroke-width: 4px; }
 .t-axis { fill: var(--muted); font: 11px var(--f-mono); }
 .node { cursor: default; transition: opacity .15s; }
 .dim { opacity: .14; }
 @media (prefers-reduced-motion: reduce) { .node { transition: none; } }
+.mapnote { margin: 0; font-size: 12.5px; color: var(--muted); }
 #tip { position: fixed; pointer-events: none; z-index: 9; background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 7px 10px; font: 12px/1.45 var(--f-body); color: var(--ink); max-width: 260px; }
 #tip .m { color: var(--muted); }
 h2 { margin: 0 0 4px; font: 600 18px var(--f-body); color: var(--ink); }
@@ -74,6 +75,7 @@ td.no { font: 12px var(--f-mono); color: var(--muted); white-space: nowrap; }
     <div class="mapbox">
       <div class="legend" id="legend"></div>
       <div id="map"></div>
+      <p class="mapnote" id="mapnote" hidden>Theme names are written by hand for this sample, standing in for names Claude would suggest. A group with no clear theme stays unnamed.</p>
     </div>
   </div>
 
@@ -93,7 +95,7 @@ td.no { font: 12px var(--f-mono); color: var(--muted); white-space: nowrap; }
         <tr><td>Opacity / blending</td><td>See-through bubbles get brighter where they overlap, so crowded areas look denser.</td><td>Too faint and single words disappear.</td><td class="here">Opacity</td></tr>
         <tr><td>Color</td><td>The group a word belongs to.</td><td>More than about six groups needs grey for the rest; one-word groups are grey here.</td><td class="here">Color</td></tr>
         <tr><td>Labels</td><td>Beside the mark, centered in it, or only for the main words.</td><td>Centered labels need bubbles big enough to hold them.</td><td class="here">Labels</td></tr>
-        <tr><td>Group names</td><td>Names each region with its two most common words, like a map's place names.</td><td>Auto-names are only a starting point; Claude could suggest better ones.</td><td class="here">Group names</td></tr>
+        <tr><td>Group names</td><td>A theme name the words imply but don't say, like "Flood risk" for flood · storm · homes. Repeating the group's own words adds nothing, so that option is gone.</td><td>Needs Claude (or a person) to name the theme, and some groups have no clear theme.</td><td class="here">Group names</td></tr>
         <tr><td>Links</td><td>Lines to the words it actually shares sentences with: the evidence behind the position.</td><td>Always-on lines turn it back into the network.</td><td class="here">Links</td></tr>
         <tr><td>Source mix</td><td>A small ring around each word showing which sources use it, so you can see where sources disagree.</td><td>Adds detail per mark; better on hover or zoom.</td><td class="no">not built yet</td></tr>
         <tr><td>Motion</td><td>When you change the source filter, words glide to their new places instead of jumping.</td><td>Needs layouts that stay aligned from one source to the next.</td><td class="no">not built yet</td></tr>
@@ -116,6 +118,23 @@ let size = {};
 function applyGroups() { D.terms.forEach((x) => { x.c = x.g[S.groups === "profile" ? S.profile : "net"]; }); size = {}; D.terms.forEach((x) => { size[x.c] = (size[x.c] || 0) + 1; }); }
 const grouped = (c) => size[c] > 1 && c < CAT.length;
 const groupName = (c) => D.terms.filter((x) => x.c === c).sort((a, b) => b.f - a.f).slice(0, 2).map((x) => x.t).join(" · ");
+// Theme names: what the words imply rather than repeat. Written by hand for this sample to
+// stand in for names Claude would suggest; a group with no clear theme gets none.
+const THEMES = {
+  "concrete interview last river road work": "Life on River Road",
+  "budget city project": "City budget", "budget city plan project": "City budget",
+  "construction cost": "Building cost",
+  "flood homes people": "Flood risk to homes", "flood homes people storm": "Flood risk", "flood homes storm": "Flood risk",
+  "channel million": "The price tag",
+  "council plan": "The council's plan",
+  "budget construction council million plan project": "The council's project",
+  "channel concrete interview last river road work": "The river and its road",
+  "budget city construction cost million plan project": "Money and the plan",
+  "council vote": "The vote", "council people river vote": "The vote",
+  "channel concrete last million": "The old channel",
+  "interview road work": "Road works"
+};
+const themeOf = (c) => THEMES[D.terms.filter((x) => x.c === c).map((x) => x.t).sort().join(" ")] || null;
 const maxF = Math.max(...D.terms.map((x) => x.f));
 const partners = (t) => D.links.filter((l) => l.a === t || l.b === t).map((l) => ({ o: l.a === t ? l.b : l.a, c: l.c, lift: l.lift })).sort((a, b) => b.c - a.c || b.lift - a.lift);
 
@@ -128,25 +147,25 @@ const CONTROLS = [
   { k: "size", label: "Size", opts: [["freq", "By count"], ["same", "Same"]] },
   { k: "opacity", label: "Opacity", range: [10, 100] },
   { k: "labels", label: "Labels", opts: [["beside", "Beside"], ["center", "Center"], ["main", "Main only"], ["off", "Off"]] },
-  { k: "names", label: "Group names", opts: [["on", "On"], ["off", "Off"]] },
+  { k: "names", label: "Group names", opts: [["off", "Off"], ["theme", "Theme names"]] },
   { k: "links", label: "Links", opts: [["off", "Off"], ["hover", "On hover"], ["on", "Always"]] },
   { k: "color", label: "Color", opts: [["group", "By group"], ["one", "One color"]] }
 ];
 const PRESETS = [
-  { name: "Your pick", why: "Your choice: grouped spread, a glow for each group, dots at 60% sized by count, labels beside, group names on, links on hover.",
-    s: { profile: "kw", groups: "net", spread: "grouped", bg: "glow", mark: "dot", size: "freq", opacity: 60, labels: "beside", names: "on", links: "hover", color: "group" } },
+  { name: "Your pick", why: "Your choice: grouped spread, a glow for each group, dots at 60% sized by count, labels beside, no group names, links on hover.",
+    s: { profile: "kw", groups: "net", spread: "grouped", bg: "glow", mark: "dot", size: "freq", opacity: 60, labels: "beside", names: "off", links: "hover", color: "group" } },
   { name: "Your pick · rich", why: "Your pick, but each word is described by the 200 most common words within one sentence either side, and the groups come from that profile. No Grouped pull: the Tight layout alone.",
-    s: { profile: "rich1", groups: "profile", spread: "tight", bg: "glow", mark: "dot", size: "freq", opacity: 60, labels: "beside", names: "on", links: "hover", color: "group" } },
+    s: { profile: "rich1", groups: "profile", spread: "tight", bg: "glow", mark: "dot", size: "freq", opacity: 60, labels: "beside", names: "off", links: "hover", color: "group" } },
   { name: "Today", why: "What the comparison page shows now: plain dots, labels beside them. The groups are there but you have to read the colors to find them.",
     s: { profile: "kw", groups: "net", spread: "medium", bg: "none", mark: "dot", size: "freq", opacity: 100, labels: "beside", names: "off", links: "off", color: "group" } },
-  { name: "Clouds", why: "Your idea one: a soft cloud behind each group, named like a region on a map. Grouped spread so the clouds don't run into each other.",
-    s: { profile: "kw", groups: "net", spread: "grouped", bg: "cloud", mark: "dot", size: "freq", opacity: 100, labels: "beside", names: "on", links: "hover", color: "group" } },
+  { name: "Clouds", why: "Your idea one: a soft cloud behind each group. Grouped spread so the clouds don't run into each other.",
+    s: { profile: "kw", groups: "net", spread: "grouped", bg: "cloud", mark: "dot", size: "freq", opacity: 100, labels: "beside", names: "off", links: "hover", color: "group" } },
   { name: "Bubbles", why: "Your idea two: big see-through circles with the word inside. Where a group's bubbles pile up the color gets brighter, so density shows without a background.",
     s: { profile: "kw", groups: "net", spread: "grouped", bg: "none", mark: "bubble", size: "freq", opacity: 32, labels: "center", names: "off", links: "hover", color: "group" } },
   { name: "Glow + bubbles", why: "Both ideas, kept quiet: a faint glow for the group, equal bubbles for the words, so the eye goes to the groups first and the words second.",
-    s: { profile: "kw", groups: "net", spread: "grouped", bg: "glow", mark: "bubble", size: "same", opacity: 24, labels: "center", names: "on", links: "hover", color: "group" } },
+    s: { profile: "kw", groups: "net", spread: "grouped", bg: "glow", mark: "bubble", size: "same", opacity: 24, labels: "center", names: "off", links: "hover", color: "group" } },
   { name: "Territories", why: "No marks at all: words sized by count inside outlined regions. Reads fastest, closest to a word cloud that actually means something.",
-    s: { profile: "kw", groups: "net", spread: "grouped", bg: "outline", mark: "text", size: "freq", opacity: 100, labels: "center", names: "on", links: "off", color: "group" } }
+    s: { profile: "kw", groups: "net", spread: "grouped", bg: "outline", mark: "text", size: "freq", opacity: 100, labels: "center", names: "off", links: "off", color: "group" } }
 ];
 let activePreset = PRESETS.findIndex((p) => p.name === "Your pick"), S = { ...PRESETS[activePreset].s };
 
@@ -260,6 +279,7 @@ function separate(pts, box) {
 const W = 760, H = 520, PAD = 70;
 function draw() {
   applyGroups(); syncControls(); drawLegend();
+  document.getElementById("mapnote").hidden = S.names !== "theme";
   const host = document.getElementById("map"); host.innerHTML = "";
   const s = el(host, "svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Keyword map: words placed by the company they keep" });
   const V = S.spread === "grouped" ? groupedLayout() : D.variants[S.profile + ":" + S.spread];
@@ -313,17 +333,17 @@ function draw() {
   /* group names: above the group if there's room, else below, left or right */
   const nameBoxes = [], markBoxes = pts.map((p) => { const w = S.mark === "text" ? p.t.length * p.fs * .58 : 2 * p.r, h = S.mark === "text" ? p.fs : 2 * p.r; return { x: p.x - w / 2 - 2, y: p.y - h / 2 - 2, w: w + 4, h: h + 4 }; });
   const clash = (b) => nameBoxes.concat(markBoxes).some((o) => b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y) || b.x < 4 || b.x + b.w > W - 4 || b.y < 4 || b.y + b.h > H - 4;
-  if (S.names === "on") for (const c in groups) {
+  if (S.names === "theme") for (const c in groups) {
+    const txt = themeOf(+c); if (!txt) continue;
     const m = groups[c], cx = m.reduce((a, p) => a + p.x, 0) / m.length, cy = m.reduce((a, p) => a + p.y, 0) / m.length;
     const ext = (p) => Math.max(p.r, S.mark === "text" ? p.fs * .7 : 0);
     const top = Math.min(...m.map((p) => p.y - ext(p))), bot = Math.max(...m.map((p) => p.y + ext(p)));
     const left = Math.min(...m.map((p) => p.x - Math.max(p.r, S.mark === "text" ? p.t.length * p.fs * .3 : 0))), right = Math.max(...m.map((p) => p.x + Math.max(p.r, S.mark === "text" ? p.t.length * p.fs * .3 : 0)));
-    const txt = groupName(+c), w = txt.length * 7.6 + 10, h = 14, gap = S.bg === "none" ? 10 : 22;
+    const w = txt.length * 7.6, h = 14, gap = S.bg === "none" ? 10 : 22;
     const tries = [[cx - w / 2, top - gap - h], [cx - w / 2, bot + gap], [left - gap - w, cy - h / 2], [right + gap, cy - h / 2], [cx - w / 2, top - gap - h - 18], [cx - w / 2, bot + gap + 18]].map(([x, y]) => ({ x, y, w, h }));
     const b = tries.find((t) => !clash(t)) || tries[0];
     nameBoxes.push(b);
-    el(s, "circle", { cx: b.x - 2, cy: b.y + 7, r: 4, fill: gcol(+c) });
-    el(s, "text", { x: b.x + w / 2 + 4, y: b.y + 11, "text-anchor": "middle", class: "t-group" }, txt);
+    el(s, "text", { x: b.x + w / 2, y: b.y + 11, "text-anchor": "middle", class: "t-group" }, txt);
   }
 
   /* marks */
@@ -352,7 +372,7 @@ function draw() {
   /* hover: tooltip, light up partners */
   for (const { g, p } of nodes) {
     const ps = partners(p.t), mine = new Set([p.t, ...ps.map((q) => q.o)]);
-    const html = `<b>${p.t}</b> · in ${p.f} sentence${p.f === 1 ? "" : "s"}<br><span class="m">${grouped(p.c) ? "group: " + groupName(p.c) : "no group"}</span>` + (ps.length ? `<br>${ps.slice(0, 4).map((q) => `${q.o} <span class="m">${q.c}×</span>`).join(" · ")}` : "") + `<br><span class="m">most similar profile:</span> ${p.nn[S.profile].join(", ")}`;
+    const html = `<b>${p.t}</b> · in ${p.f} sentence${p.f === 1 ? "" : "s"}<br><span class="m">${grouped(p.c) ? "group: " + (themeOf(p.c) ? themeOf(p.c) + " (" + groupName(p.c) + ")" : groupName(p.c)) : "no group"}</span>` + (ps.length ? `<br>${ps.slice(0, 4).map((q) => `${q.o} <span class="m">${q.c}×</span>`).join(" · ")}` : "") + `<br><span class="m">most similar profile:</span> ${p.nn[S.profile].join(", ")}`;
     const on = (e) => {
       tip.innerHTML = html; tip.hidden = false; if (e.clientX != null) move(e);
       for (const n of nodes) n.g.classList.toggle("dim", !mine.has(n.p.t));
