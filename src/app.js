@@ -25,7 +25,7 @@ const LENS_TEXT = {
   uxr: "UXR: the crawler stops on each quote Claude used as evidence, pins it to its theme on the wall, and flags pain points.",
   scan: "Claude is reading every source. The crawler skims each one once while it works."
 };
-const LENS_ACCENT = { references: "#ff3fd8", trends: "#33e1ff", tone: "#ffd84d", insights: "#46f08a", uxr: "#b58cff", scan: "#46f08a" };
+const LENS_ACCENT = { references: "#ffd84d", trends: "#33e1ff", tone: "#ff3fd8", insights: "#46f08a", uxr: "#b58cff", scan: "#46f08a" };
 
 const project = { sources: [], active: 0, ai: { insights: null, uxr: null }, asks: [], questions: { insights: "", uxr: "" } };
 const ui = { lens: "trends", view: "doc", aiRun: null };

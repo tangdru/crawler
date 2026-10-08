@@ -24,7 +24,7 @@ export const LENSES = [
     limit: "Only as good as the voices in your sources; it can't hear who's absent."
   },
   {
-    id: "tone", name: "Tone", accent: "#ffd84d",
+    id: "tone", name: "Tone", accent: "#ff3fd8",
     question: "How does it sound?",
     finds: ["Positive and negative wording, paragraph by paragraph", "Six emotions: trust, fear, anger, joy, sadness, surprise", "Hedging (may, perhaps) versus certainty (clearly, always)", "Confident claims with no citation nearby"],
     how: "Matches word lists in your browser",
@@ -44,7 +44,7 @@ export const LENSES = [
     limit: "It counts words; it doesn't understand what they mean."
   },
   {
-    id: "references", name: "References", accent: "#ff3fd8",
+    id: "references", name: "References", accent: "#ffd84d",
     question: "What does it cite, and who is quoted?",
     finds: ["DOIs, ISBNs, PubMed, arXiv and other IDs", "Links, citations and reference lists", "Quotes and who said them", "Dates, figures and page ranges"],
     how: "Pattern matching in your browser; also runs quietly under every other lens",

@@ -444,7 +444,7 @@ export class Crawler {
     ctx.beginPath();
     for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j += 2) { ctx.moveTo(nodes[i][0], nodes[i][1]); ctx.lineTo(nodes[j][0], nodes[j][1]); }
     ctx.stroke();
-    const core = { references: "#ff3fd8", trends: "#33e1ff", tone: "#ffd84d", insights: "#46f08a", uxr: "#b58cff", scan: "#46f08a" }[this.lens];
+    const core = { references: "#ffd84d", trends: "#33e1ff", tone: "#ff3fd8", insights: "#46f08a", uxr: "#b58cff", scan: "#46f08a" }[this.lens];
     ctx.fillStyle = core; ctx.fillRect(bx - 4, by - 4, 8, 8);
     ctx.strokeStyle = "#fff"; ctx.strokeRect(bx - 6.5, by - 6.5, 13, 13);
     ctx.fillStyle = "#62ffd0";
