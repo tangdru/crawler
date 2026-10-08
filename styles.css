@@ -458,4 +458,4 @@ body.mode-sources main { max-width: calc(68ch + 340px); padding-left: 340px; }
 /* the Analysis page opens straight on the source/jump bar */
 body.mode-analysis .sum-nav { margin-top: 0; }
 /* no rule between the source/jump bar and the first section; the spacing stays */
-.sum-nav + .sec-head { border-top-color: transparent; }
+.sum-nav + .sec-head { border-top-color: transparent; margin-top: 17px; padding-top: 10px; }
