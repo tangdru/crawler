@@ -22,7 +22,7 @@ const LENS_TEXT = {
   tone: "Tone: blue wash = positive wording, red = negative. Dimmed italics are hedges; underlined words sound certain; emotion words get a label.",
   insights: "Insights: the crawler stops on each quote Claude used. Key points pin to the wall; claims are tinted by how well they're backed (blue backed, amber hedged, red asserted).",
   uxr: "UXR: the crawler stops on each quote Claude used as evidence, pins it to its theme on the wall, and flags pain points.",
-  scan: "Claude is reading every source. The crawler skims along while it works."
+  scan: "Claude is reading every source. The crawler skims each one once while it works."
 };
 const LENS_ACCENT = { references: "#ff3fd8", trends: "#33e1ff", tone: "#ffd84d", insights: "#46f08a", uxr: "#b58cff", scan: "#46f08a" };
 
@@ -204,7 +204,14 @@ function startLens(lens, autoplay = true) {
   crawler.start(lens);
   setPlaying(autoplay && !crawler.reduceMotion);
   $("hudLine").textContent = LENS_TEXT[lens];
+  setSkipLabel();
   renderWall();
+}
+// While Claude works, "Finish now" has nothing to finish; it cancels the run instead.
+function setSkipLabel() {
+  const waiting = ui.lens === "scan" && ui.aiRun;
+  $("skip").textContent = waiting ? "Cancel" : "Finish now";
+  $("skip").title = waiting ? "Stop waiting for Claude" : "Apply this lens to the whole document now";
 }
 
 function chooseLens(lens) {
@@ -237,8 +244,13 @@ function resumeIfAway() {
 
 function finished(lens) {
   if (lens === "scan") {
-    // keep skimming until Claude answers
-    if (ui.aiRun) { crawler.start("scan"); crawler.setPlaying(true); }
+    // Skim each source once, then wait at the end of the last one for Claude's answer.
+    const r = ui.aiRun;
+    if (!r) return;
+    r.skimmed.add(project.active);
+    const next = project.sources.findIndex((_, i) => !r.skimmed.has(i));
+    if (next >= 0) showSource(next, { lens: "scan" });
+    else $("hudLine").textContent = "Done skimming. Claude is still writing; results appear here as soon as they arrive.";
     return;
   }
   const src = active();
@@ -310,10 +322,15 @@ async function runAI() {
   project.questions[lens] = question;
   $("aiSheet").hidden = true;
   const sources = project.sources.slice();
-  ui.aiRun = { lens, started: performance.now(), chars: 0, seconds: 0 };
+  const ctl = new AbortController();
+  const from = project.active;
+  ui.aiRun = { lens, started: performance.now(), chars: 0, seconds: 0, skimmed: new Set(), ctl };
+  // The HUD otherwise updates only as the crawler moves; keep the clock running while it waits.
+  const tick = setInterval(() => { if (ui.lens === "scan") hud(crawler.progress()); }, 1000);
+  const limit = setTimeout(() => ctl.abort("timeout"), 240000);
   startLens("scan");
   try {
-    const raw = await request(lens, sources, question, (p) => { if (ui.aiRun) { ui.aiRun.chars = p.chars; ui.aiRun.seconds = p.seconds; } });
+    const raw = await request(lens, sources, question, (p) => { if (ui.aiRun) { ui.aiRun.chars = p.chars; ui.aiRun.seconds = p.seconds; } }, ctl.signal);
     const checked = lens === "uxr" ? verifyUxr(raw, sources) : verifyInsights(raw, sources);
     const main = lens === "uxr" ? checked.themes : checked.keyPoints;
     if (!main.length) throw new Error("Claude's answer had no quotes that could be found in the text, so nothing is shown. Try again.");
@@ -322,16 +339,24 @@ async function runAI() {
     persist();
     const u = raw.usage || {};
     const found = lens === "uxr" ? `${checked.themes.length} themes, ${checked.painPoints.length} pain points` : `${checked.keyPoints.length} key points, ${checked.claims.length} claims`;
+    if (project.active !== from && project.sources[from]) showSource(from, { autoplay: false, lens: "trends" });
     toast(`${found}${checked.dropped ? `; ${checked.dropped} unverifiable quote${checked.dropped === 1 ? "" : "s"} removed` : ""} · ${(u.input_tokens || 0).toLocaleString("en-US")} in / ${(u.output_tokens || 0).toLocaleString("en-US")} out tokens`);
     startLens(lens);
   } catch (err) {
+    const cancelled = ctl.signal.aborted && ctl.signal.reason !== "timeout";
     ui.aiRun = null;
     console.error(err);
+    if (project.active !== from && project.sources[from]) showSource(from, { autoplay: false, lens: "trends" });
     startLens("trends", false);
+    if (cancelled) { toast(`${AI_NAME[lens]} cancelled.`); return; }
     ui.sheetLens = lens;
     $("aiError").textContent = err.message || String(err);
     $("aiError").hidden = false;
     $("aiSheet").hidden = false;
+  } finally {
+    clearInterval(tick);
+    clearTimeout(limit);
+    setSkipLabel();
   }
 }
 
@@ -562,7 +587,10 @@ document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("clic
 }));
 $("play").addEventListener("click", () => { setView("doc"); setPlaying(!crawler.playing); });
 $("speed").addEventListener("change", (e) => { crawler.speed = parseFloat(e.target.value); });
-$("skip").addEventListener("click", () => { if (project.sources.length && !crawler.done && ui.lens !== "scan") { setView("doc"); crawler.skip(); } });
+$("skip").addEventListener("click", () => {
+  if (ui.lens === "scan" && ui.aiRun) { ui.aiRun.ctl.abort("cancel"); return; }
+  if (project.sources.length && !crawler.done) { setView("doc"); crawler.skip(); }
+});
 $("addSource").addEventListener("click", openSheet);
 $("helpBtn").addEventListener("click", openHelp);
 $("closeHelp").addEventListener("click", closeHelp);

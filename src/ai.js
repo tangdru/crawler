@@ -60,15 +60,22 @@ export async function checkReady() {
   }
 }
 
-export async function request(mode, sources, question, onProgress) {
+// Cancelled by the person, or past the time limit: both abort the fetch with a reason.
+const aborted = (signal) => new Error(signal.reason === "timeout"
+  ? "Claude took longer than 4 minutes, so the run was stopped. Try again, or use fewer or shorter sources."
+  : "Cancelled.");
+
+export async function request(mode, sources, question, onProgress, signal) {
   let res;
   try {
     res = await fetch(FN, {
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, question, sources: payloadFor(sources) })
+      body: JSON.stringify({ mode, question, sources: payloadFor(sources) }),
+      signal
     });
   } catch {
+    if (signal && signal.aborted) throw aborted(signal);
     throw new Error("Couldn't reach Claude. This works on the app's own site (tangdru.github.io/crawler); check your connection.");
   }
   if (!res.ok) {
@@ -80,7 +87,9 @@ export async function request(mode, sources, question, onProgress) {
   const dec = new TextDecoder();
   let buf = "", text = "", done = null, seconds = 0;
   while (true) {
-    const { value, done: end } = await reader.read();
+    let chunk;
+    try { chunk = await reader.read(); } catch (e) { if (signal && signal.aborted) throw aborted(signal); throw e; }
+    const { value, done: end } = chunk;
     if (end) break;
     buf += dec.decode(value, { stream: true });
     let nl;
