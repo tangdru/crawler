@@ -699,7 +699,13 @@ function hud(p) {
   } else if (p.lens === "trends") {
     const top = [...p.seen.values()].sort((a, b) => b.n - a.n || a.entry.rank - b.entry.rank).slice(0, 6);
     add(`keywords <b>${p.seen.size}</b>`, "stat");
-    for (const s of top) add(`${esc(s.entry.term)} <b>×${s.n}</b>`, "hchip", "#33e1ff");
+    // Spark bars instead of counts: length is mentions so far, scaled to the top keyword,
+    // capped at 36px so the row stays compact. The count is in the tooltip.
+    const most = Math.max(1, ...top.map((s) => s.n));
+    for (const s of top) {
+      const w = Math.max(3, Math.round((s.n / most) * 36));
+      add(`${esc(s.entry.term)} <span class="spark" title="${s.n} mention${s.n === 1 ? "" : "s"} so far" aria-label="${s.n} mentions"><i style="width:${w}px"></i></span>`, "hchip kw", "#33e1ff");
+    }
   } else if (isAI(p.lens)) {
     const r = project.ai[p.lens];
     add(p.lens === "uxr" ? `${r.themes.length} themes` : `${r.keyPoints.length} key points · ${r.claims.length} claims`, "stat");

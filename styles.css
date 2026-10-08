@@ -450,3 +450,8 @@ body.mode-sources main { max-width: calc(68ch + 340px); padding-left: 340px; }
   body.mode-sources main { max-width: 68ch; padding-left: 16px; padding-top: 24px; }
 }
 .crawl-title b.num { font-weight: 700; }
+/* trends readout: a spark bar per keyword instead of a count */
+.hchip.kw { align-items: center; }
+.hchip.kw::before { display: none; }
+.spark { display: inline-block; width: 36px; height: 6px; border-radius: 3px; background: var(--ink-faint); overflow: hidden; vertical-align: middle; }
+.spark i { display: block; height: 100%; border-radius: 3px; background: var(--c, var(--cyan)); }
