@@ -1,0 +1,368 @@
+<title>Keyword Map Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;600&family=Fraunces:opsz,wght@9..144,500&display=swap">
+<style>
+/* Layout: controls beside one large map (stacked on phones), then a reference table of
+   the visual variables. Same dark surface and type as Reference Crawler. */
+:root {
+  --bg: #0a0a0f; --panel: #111119; --panel-2: #181826; --line: #24253a;
+  --ink: #ffffff; --ink-2: #c3c2b7; --muted: #8c8a9a; --faint: #3a3b52;
+  --accent: #33e1ff;
+  --f-display: "Fraunces", Georgia, serif; --f-body: "IBM Plex Sans", system-ui, sans-serif; --f-mono: "IBM Plex Mono", ui-monospace, monospace;
+  color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink-2); font: 15px/1.55 var(--f-body); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 32px 64px; display: grid; gap: 22px; }
+header h1 { font: 500 32px/1.15 var(--f-display); color: var(--ink); margin: 0 0 8px; text-wrap: balance; }
+header p { margin: 0; max-width: 72ch; }
+.eyebrow { font: 11px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px 20px; min-width: 0; }
+.presets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.presets .lbl { font: 11px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+.presets button { font: 600 13px var(--f-body); color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+.presets button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.presets .why { flex-basis: 100%; font-size: 13.5px; color: var(--ink-2); margin-top: 4px; min-height: 1.5em; }
+.lab { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 820px) { .lab { grid-template-columns: 1fr; } .controls { order: 2; } }
+.controls { display: grid; gap: 14px; }
+.ctl { display: grid; gap: 6px; }
+.ctl > span { font: 11px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.toggle { display: flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.toggle button { flex: 1 1 auto; font: 12px var(--f-mono); color: var(--ink-2); background: transparent; border: 0; padding: 6px 8px; cursor: pointer; }
+.toggle button + button { border-left: 1px solid var(--line); }
+.toggle button[aria-pressed="true"] { background: var(--panel-2); color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.ctl small { color: var(--muted); font-size: 12px; }
+.mapbox { min-width: 0; display: grid; gap: 10px; }
+.mapbox svg { display: block; width: 100%; height: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.t-node { fill: var(--ink); font: 600 12px var(--f-body); paint-order: stroke; stroke: var(--panel); stroke-width: 4px; stroke-linejoin: round; }
+.t-in { fill: var(--ink); font: 600 12px var(--f-body); paint-order: stroke; stroke: rgba(10,10,15,.55); stroke-width: 3px; stroke-linejoin: round; }
+.t-group { font: 600 10.5px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; fill: var(--ink-2); paint-order: stroke; stroke: var(--panel); stroke-width: 4px; }
+.t-axis { fill: var(--muted); font: 11px var(--f-mono); }
+.node { cursor: default; transition: opacity .15s; }
+.dim { opacity: .14; }
+@media (prefers-reduced-motion: reduce) { .node { transition: none; } }
+#tip { position: fixed; pointer-events: none; z-index: 9; background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 7px 10px; font: 12px/1.45 var(--f-body); color: var(--ink); max-width: 260px; }
+#tip .m { color: var(--muted); }
+h2 { margin: 0 0 4px; font: 600 18px var(--f-body); color: var(--ink); }
+.sub { margin: 0 0 14px; color: var(--ink-2); max-width: 75ch; }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 13.5px; }
+th { text-align: left; font: 600 11px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td:first-child { color: var(--ink); font-weight: 600; white-space: nowrap; }
+td.here { font: 12px var(--f-mono); color: var(--accent); white-space: nowrap; }
+td.no { font: 12px var(--f-mono); color: var(--muted); white-space: nowrap; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Trends · Keyword map (UMAP) · design exploration</div>
+    <h1>What we can change on the keyword map</h1>
+    <p>Same 20 keywords from the three-source river sample, same groups as the network. Start with a preset, then change one control at a time to see what each visual variable adds. Hover a word for its numbers and partners.</p>
+  </header>
+
+  <div class="card presets" id="presets"><span class="lbl">Presets</span></div>
+
+  <div class="card lab">
+    <div class="controls" id="controls"></div>
+    <div class="mapbox">
+      <div class="legend" id="legend"></div>
+      <div id="map"></div>
+    </div>
+  </div>
+
+  <section class="card">
+    <h2>The visual variables</h2>
+    <p class="sub">Each one can carry a different piece of information. The rule of thumb: position, and the background regions drawn from it, show the groups. Size shows how common a word is. Color names the group. Avoid making two of them say the same thing, or the map gets louder without saying more.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Variable</th><th>What it can show</th><th>Watch out</th><th>In this lab</th></tr></thead>
+      <tbody>
+        <tr><td>Position</td><td>Words used in similar company sit close. This is what UMAP computes; everything else is styling on top.</td><td>Axes mean nothing. Only distance counts, and only roughly between far-apart groups.</td><td class="here">fixed</td></tr>
+        <tr><td>Profile</td><td>What each word is compared against before UMAP runs. 19 keywords: only the other top keywords in the same sentence. 200 words: the 200 most common words in the same sentence. ±1: also the sentence before and after, within the same paragraph.</td><td>More context gives UMAP more evidence, so groups separate on their own, but it can also link words that are merely nearby.</td><td class="here">Profile</td></tr>
+        <tr><td>Groups from</td><td>Network: words that unusually often share a sentence. This profile: words whose profiles look alike (their 4 nearest neighbours, then community detection).</td><td>The two can disagree. That disagreement is itself interesting: same sentence versus same surroundings.</td><td class="here">Groups from</td></tr>
+        <tr><td>Spread</td><td>UMAP settings: how tightly words of a group are packed together, and how much space is left between groups.</td><td>Tight looks clearer but overstates how separate groups are on a short text. Grouped goes further: it pulls each group together on purpose, so where groups sit is still UMAP's, but spacing inside a group no longer means anything.</td><td class="here">Spread</td></tr>
+        <tr><td>Background region</td><td>A soft glow, a cloud or an outline behind each group, so the groups read as places, not lists of dots.</td><td>A region suggests a hard border. Clouds are softer and more honest than outlines.</td><td class="here">Background</td></tr>
+        <tr><td>Mark type</td><td>Dots are precise. Bubbles show overlap and can hold the word. Text alone reads fastest but needs room.</td><td>Text alone collides when words sit close together.</td><td class="here">Marks</td></tr>
+        <tr><td>Size</td><td>How many sentences use the word.</td><td>Areas are hard to compare precisely. Hover gives the exact count.</td><td class="here">Size</td></tr>
+        <tr><td>Opacity / blending</td><td>See-through bubbles get brighter where they overlap, so crowded areas look denser.</td><td>Too faint and single words disappear.</td><td class="here">Opacity</td></tr>
+        <tr><td>Color</td><td>The group a word belongs to.</td><td>More than about six groups needs grey for the rest; one-word groups are grey here.</td><td class="here">Color</td></tr>
+        <tr><td>Labels</td><td>Beside the mark, centered in it, or only for the main words.</td><td>Centered labels need bubbles big enough to hold them.</td><td class="here">Labels</td></tr>
+        <tr><td>Group names</td><td>Names each region with its two most common words, like a map's place names.</td><td>Auto-names are only a starting point; Claude could suggest better ones.</td><td class="here">Group names</td></tr>
+        <tr><td>Links</td><td>Lines to the words it actually shares sentences with: the evidence behind the position.</td><td>Always-on lines turn it back into the network.</td><td class="here">Links</td></tr>
+        <tr><td>Source mix</td><td>A small ring around each word showing which sources use it, so you can see where sources disagree.</td><td>Adds detail per mark; better on hover or zoom.</td><td class="no">not built yet</td></tr>
+        <tr><td>Motion</td><td>When you change the source filter, words glide to their new places instead of jumping.</td><td>Needs layouts that stay aligned from one source to the next.</td><td class="no">not built yet</td></tr>
+        <tr><td>Zoom / focus</td><td>Click a group to zoom in and list its sentences.</td><td>More interaction to design.</td><td class="no">not built yet</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+</div>
+<div id="tip" hidden></div>
+
+<script>
+const D = {"N":105,"ctx":200,"terms":[{"t":"river","f":20,"c":0,"g":{"kw":0,"rich":0,"rich1":0},"nn":{"kw":["work","interview","channel"],"rich":["road","people","last"],"rich1":["council","road","channel"]}},{"t":"city","f":9,"c":1,"g":{"kw":2,"rich":1,"rich1":1},"nn":{"kw":["million","cost","flood"],"rich":["plan","flood","project"],"rich1":["project","budget","plan"]}},{"t":"road","f":8,"c":0,"g":{"kw":0,"rich":0,"rich1":3},"nn":{"kw":["last","concrete","channel"],"rich":["last","river","work"],"rich1":["last","project","river"]}},{"t":"flood","f":7,"c":3,"g":{"kw":2,"rich":2,"rich1":5},"nn":{"kw":["homes","city","cost"],"rich":["homes","storm","city"],"rich1":["homes","storm","channel"]}},{"t":"cost","f":9,"c":2,"g":{"kw":2,"rich":1,"rich1":4},"nn":{"kw":["city","million","flood"],"rich":["construction","million","plan"],"rich1":["construction","million","plan"]}},{"t":"channel","f":8,"c":4,"g":{"kw":3,"rich":0,"rich1":2},"nn":{"kw":["million","storm","council"],"rich":["million","river","council"],"rich1":["concrete","million","last"]}},{"t":"million","f":7,"c":4,"g":{"kw":1,"rich":1,"rich1":2},"nn":{"kw":["city","channel","cost"],"rich":["channel","plan","city"],"rich1":["concrete","last","channel"]}},{"t":"budget","f":7,"c":1,"g":{"kw":1,"rich":1,"rich1":1},"nn":{"kw":["council","plan","million"],"rich":["city","plan","project"],"rich1":["city","project","plan"]}},{"t":"project","f":8,"c":1,"g":{"kw":1,"rich":1,"rich1":1},"nn":{"kw":["plan","million","budget"],"rich":["city","plan","budget"],"rich1":["road","city","budget"]}},{"t":"interview","f":8,"c":0,"g":{"kw":0,"rich":0,"rich1":3},"nn":{"kw":["river","last","work"],"rich":["road","river","people"],"rich1":["road","river","channel"]}},{"t":"plan","f":7,"c":5,"g":{"kw":1,"rich":1,"rich1":1},"nn":{"kw":["project","budget","channel"],"rich":["city","million","council"],"rich1":["city","project","million"]}},{"t":"construction","f":7,"c":2,"g":{"kw":1,"rich":1,"rich1":4},"nn":{"kw":["last","plan","million"],"rich":["cost","budget","project"],"rich1":["cost","plan","road"]}},{"t":"council","f":6,"c":5,"g":{"kw":1,"rich":3,"rich1":0},"nn":{"kw":["budget","channel","city"],"rich":["plan","vote","million"],"rich1":["vote","river","people"]}},{"t":"work","f":5,"c":0,"g":{"kw":0,"rich":0,"rich1":3},"nn":{"kw":["river","concrete","interview"],"rich":["last","road","river"],"rich1":["road","last","river"]}},{"t":"vote","f":4,"c":6,"g":{"kw":2,"rich":3,"rich1":0},"nn":{"kw":["river","homes","plan"],"rich":["council","people","work"],"rich1":["people","council","homes"]}},{"t":"storm","f":3,"c":7,"g":{"kw":3,"rich":2,"rich1":5},"nn":{"kw":["channel","people","flood"],"rich":["flood","homes","city"],"rich1":["flood","homes","channel"]}},{"t":"last","f":4,"c":0,"g":{"kw":0,"rich":0,"rich1":2},"nn":{"kw":["interview","road","river"],"rich":["road","work","river"],"rich1":["concrete","road","million"]}},{"t":"concrete","f":4,"c":0,"g":{"kw":0,"rich":0,"rich1":2},"nn":{"kw":["work","cost","road"],"rich":["last","road","channel"],"rich1":["million","last","channel"]}},{"t":"people","f":4,"c":3,"g":{"kw":3,"rich":2,"rich1":0},"nn":{"kw":["channel","storm","flood"],"rich":["homes","river","flood"],"rich1":["vote","homes","river"]}},{"t":"homes","f":4,"c":3,"g":{"kw":2,"rich":2,"rich1":5},"nn":{"kw":["flood","city","vote"],"rich":["flood","people","storm"],"rich1":["flood","people","vote"]}}],"variants":{"kw:tight":[[3.555,8.297],[0.926,6.773],[2.468,9.169],[1.422,6.235],[1.286,6.719],[-0.124,6.498],[0.495,7.168],[-0.288,7.519],[0.156,7.756],[3.744,8.715],[0.255,7.973],[0.871,8.363],[-0.368,7.026],[3.227,8.602],[2.499,7.305],[-0.017,5.907],[3.929,9.004],[2.716,8.875],[0.263,6.075],[1.887,6.728]],"kw:medium":[[-4.389,-0.662],[-6.957,0.858],[-5.923,-0.274],[-6.695,1.794],[-6.44,0.972],[-8.134,0.692],[-7.337,0.128],[-8.311,-0.727],[-7.626,-0.673],[-4.858,-1.192],[-7.594,-1.144],[-6.591,-1.593],[-8.479,-0.042],[-4.815,-0.382],[-4.841,0.975],[-8.22,1.576],[-5.523,-1.569],[-5.446,0.027],[-7.768,1.418],[-5.86,1.538]],"kw:loose":[[-23.235,7.352],[-24.219,5.293],[-22.274,8.893],[-25.954,5.103],[-24.841,6.654],[-23.664,4.288],[-22.935,5.454],[-22.197,4.189],[-21.16,4.509],[-22.425,7.926],[-21.831,5.392],[-21.429,6.489],[-22.813,3.557],[-23.594,8.61],[-23.69,6.298],[-25.2,4.464],[-21.461,7.669],[-24.526,8.059],[-24.683,3.595],[-25.671,6.169]],"rich:tight":[[-4.895,3.003],[-7.455,2.24],[-4.514,3.497],[-6.012,1.429],[-8.426,3.004],[-6.331,3.6],[-7.757,2.707],[-7.99,3.516],[-7.687,3.292],[-4.431,2.998],[-7.517,2.894],[-8.418,3.351],[-6.872,2.995],[-4.607,3.708],[-6.119,2.822],[-6.293,1.174],[-5.084,3.688],[-5.296,3.865],[-5.378,1.964],[-5.585,1.349]],"rich:medium":[[-3.374,0.714],[-3.897,-2.323],[-3.326,1.449],[-3.116,-1.31],[-5.752,-1.968],[-5.351,-0.191],[-5.36,-1.203],[-4.908,-2.798],[-4.531,-2.473],[-2.734,0.849],[-4.738,-1.785],[-5.639,-2.508],[-4.724,-0.845],[-3.694,1.637],[-4.223,-0.054],[-2.815,-1.789],[-4.287,1.422],[-4.571,1.038],[-2.929,-0.193],[-2.604,-0.945]],"rich:loose":[[6.161,-4.432],[9.786,-1.915],[4.782,-4.121],[9.353,-4.325],[8.721,-2.027],[6.647,-2.206],[7.334,-0.597],[9.724,-0.575],[8.755,-0.776],[5.662,-5.338],[8.036,0.05],[7.791,-1.684],[6.194,-0.66],[4.585,-2.92],[5.312,-1.783],[8.618,-3.506],[5.703,-3.325],[6.861,-3.419],[7.155,-5.249],[8.207,-4.657]],"rich1:tight":[[-6.491,7.866],[-9.587,9.115],[-7.791,8.249],[-5.356,6.282],[-9.347,7.531],[-7.128,6.624],[-8.255,6.71],[-9.334,8.914],[-8.954,8.806],[-7.271,8.196],[-9.495,8.485],[-9.224,7.893],[-5.601,7.731],[-7.85,7.759],[-5.244,7.536],[-5.71,6.118],[-7.839,7.16],[-7.632,6.523],[-5.285,7.256],[-5.289,6.576]],"rich1:medium":[[7.06,-2.888],[10.578,-2.54],[8.507,-2.754],[5.811,-5.012],[9.905,-4.19],[7.371,-4.676],[8.794,-4.841],[10.226,-2.158],[9.664,-2.464],[7.871,-2.51],[10.332,-3.075],[9.787,-3.593],[6.118,-2.806],[8.39,-3.398],[5.84,-3.256],[6.393,-5.045],[8.31,-4.127],[7.977,-4.966],[5.581,-3.576],[5.737,-4.423]],"rich1:loose":[[0.477,11.218],[4.693,12.358],[2.011,11.617],[1.039,8.058],[4.918,9.049],[1.804,9.275],[3.85,8.808],[5.373,11.542],[4.079,11.464],[1.371,10.424],[5.456,10.483],[4.461,10.205],[-0.529,10.881],[2.934,11.679],[-1.142,9.837],[2.257,7.944],[2.985,10.414],[2.933,9.192],[-0.175,9.664],[-0.016,8.676]]},"links":[{"a":"river","b":"road","c":7,"lift":4.59},{"a":"river","b":"flood","c":2,"lift":1.5},{"a":"river","b":"channel","c":3,"lift":1.97},{"a":"river","b":"interview","c":2,"lift":1.31},{"a":"river","b":"council","c":2,"lift":1.75},{"a":"river","b":"last","c":2,"lift":2.63},{"a":"river","b":"concrete","c":2,"lift":2.63},{"a":"river","b":"people","c":2,"lift":2.63},{"a":"river","b":"homes","c":2,"lift":2.63},{"a":"city","b":"flood","c":2,"lift":3.33},{"a":"city","b":"channel","c":2,"lift":2.92},{"a":"city","b":"million","c":2,"lift":3.33},{"a":"city","b":"budget","c":2,"lift":3.33},{"a":"city","b":"project","c":3,"lift":4.38},{"a":"city","b":"plan","c":2,"lift":3.33},{"a":"city","b":"homes","c":2,"lift":5.83},{"a":"road","b":"interview","c":2,"lift":3.28},{"a":"road","b":"work","c":2,"lift":5.25},{"a":"road","b":"last","c":3,"lift":9.84},{"a":"flood","b":"homes","c":3,"lift":11.25},{"a":"cost","b":"million","c":2,"lift":3.33},{"a":"cost","b":"construction","c":3,"lift":5},{"a":"channel","b":"million","c":2,"lift":3.75},{"a":"million","b":"plan","c":2,"lift":4.29},{"a":"budget","b":"project","c":2,"lift":3.75},{"a":"plan","b":"council","c":2,"lift":5},{"a":"work","b":"last","c":2,"lift":10.5},{"a":"people","b":"homes","c":2,"lift":13.12}]};
+const CAT = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9"];
+const NS = "http://www.w3.org/2000/svg";
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const GREY = css("--muted"), MONO = "#6da7ec";
+// Network groups are stored once; switching "Groups from" re-labels every word.
+D.terms.forEach((x) => { x.g.net = x.c; });
+let size = {};
+function applyGroups() { D.terms.forEach((x) => { x.c = x.g[S.groups === "profile" ? S.profile : "net"]; }); size = {}; D.terms.forEach((x) => { size[x.c] = (size[x.c] || 0) + 1; }); }
+const grouped = (c) => size[c] > 1 && c < CAT.length;
+const groupName = (c) => D.terms.filter((x) => x.c === c).sort((a, b) => b.f - a.f).slice(0, 2).map((x) => x.t).join(" · ");
+const maxF = Math.max(...D.terms.map((x) => x.f));
+const partners = (t) => D.links.filter((l) => l.a === t || l.b === t).map((l) => ({ o: l.a === t ? l.b : l.a, c: l.c, lift: l.lift })).sort((a, b) => b.c - a.c || b.lift - a.lift);
+
+const CONTROLS = [
+  { k: "profile", label: "Profile: compare each word with", opts: [["kw", "19 keywords"], ["rich", "200 words"], ["rich1", "200 words ±1"]] },
+  { k: "groups", label: "Groups from", opts: [["net", "Network"], ["profile", "This profile"]] },
+  { k: "spread", label: "Spread", opts: [["grouped", "Grouped"], ["tight", "Tight"], ["medium", "Medium"], ["loose", "Loose"]] },
+  { k: "bg", label: "Background", opts: [["none", "None"], ["glow", "Glow"], ["cloud", "Cloud"], ["outline", "Outline"]] },
+  { k: "mark", label: "Marks", opts: [["dot", "Dot"], ["bubble", "Bubble"], ["text", "Text"]] },
+  { k: "size", label: "Size", opts: [["freq", "By count"], ["same", "Same"]] },
+  { k: "opacity", label: "Opacity", range: [10, 100] },
+  { k: "labels", label: "Labels", opts: [["beside", "Beside"], ["center", "Center"], ["main", "Main only"], ["off", "Off"]] },
+  { k: "names", label: "Group names", opts: [["on", "On"], ["off", "Off"]] },
+  { k: "links", label: "Links", opts: [["off", "Off"], ["hover", "On hover"], ["on", "Always"]] },
+  { k: "color", label: "Color", opts: [["group", "By group"], ["one", "One color"]] }
+];
+const PRESETS = [
+  { name: "Your pick", why: "Your choice: grouped spread, a glow for each group, dots at 60% sized by count, labels beside, group names on, links on hover.",
+    s: { profile: "kw", groups: "net", spread: "grouped", bg: "glow", mark: "dot", size: "freq", opacity: 60, labels: "beside", names: "on", links: "hover", color: "group" } },
+  { name: "Your pick · rich", why: "Your pick, but each word is described by the 200 most common words within one sentence either side, and the groups come from that profile. No Grouped pull: the Tight layout alone.",
+    s: { profile: "rich1", groups: "profile", spread: "tight", bg: "glow", mark: "dot", size: "freq", opacity: 60, labels: "beside", names: "on", links: "hover", color: "group" } },
+  { name: "Today", why: "What the comparison page shows now: plain dots, labels beside them. The groups are there but you have to read the colors to find them.",
+    s: { profile: "kw", groups: "net", spread: "medium", bg: "none", mark: "dot", size: "freq", opacity: 100, labels: "beside", names: "off", links: "off", color: "group" } },
+  { name: "Clouds", why: "Your idea one: a soft cloud behind each group, named like a region on a map. Grouped spread so the clouds don't run into each other.",
+    s: { profile: "kw", groups: "net", spread: "grouped", bg: "cloud", mark: "dot", size: "freq", opacity: 100, labels: "beside", names: "on", links: "hover", color: "group" } },
+  { name: "Bubbles", why: "Your idea two: big see-through circles with the word inside. Where a group's bubbles pile up the color gets brighter, so density shows without a background.",
+    s: { profile: "kw", groups: "net", spread: "grouped", bg: "none", mark: "bubble", size: "freq", opacity: 32, labels: "center", names: "off", links: "hover", color: "group" } },
+  { name: "Glow + bubbles", why: "Both ideas, kept quiet: a faint glow for the group, equal bubbles for the words, so the eye goes to the groups first and the words second.",
+    s: { profile: "kw", groups: "net", spread: "grouped", bg: "glow", mark: "bubble", size: "same", opacity: 24, labels: "center", names: "on", links: "hover", color: "group" } },
+  { name: "Territories", why: "No marks at all: words sized by count inside outlined regions. Reads fastest, closest to a word cloud that actually means something.",
+    s: { profile: "kw", groups: "net", spread: "grouped", bg: "outline", mark: "text", size: "freq", opacity: 100, labels: "center", names: "on", links: "off", color: "group" } }
+];
+let activePreset = PRESETS.findIndex((p) => p.name === "Your pick"), S = { ...PRESETS[activePreset].s };
+
+/* controls */
+const ctlHost = document.getElementById("controls");
+const ctlEls = {};
+for (const c of CONTROLS) {
+  const w = document.createElement("div"); w.className = "ctl";
+  w.innerHTML = `<span id="l-${c.k}">${c.label}</span>`;
+  if (c.range) {
+    const inp = document.createElement("input"); inp.type = "range"; inp.min = c.range[0]; inp.max = c.range[1]; inp.step = 2; inp.setAttribute("aria-labelledby", `l-${c.k}`);
+    const sm = document.createElement("small");
+    inp.addEventListener("input", () => set(c.k, +inp.value));
+    w.append(inp, sm); ctlEls[c.k] = { inp, sm };
+  } else {
+    const t = document.createElement("div"); t.className = "toggle"; t.setAttribute("role", "group"); t.setAttribute("aria-labelledby", `l-${c.k}`);
+    for (const [v, txt] of c.opts) { const b = document.createElement("button"); b.type = "button"; b.textContent = txt; b.dataset.v = v; b.addEventListener("click", () => set(c.k, v)); t.appendChild(b); }
+    w.appendChild(t); ctlEls[c.k] = t;
+  }
+  ctlHost.appendChild(w);
+}
+const pHost = document.getElementById("presets");
+const why = document.createElement("div"); why.className = "why";
+PRESETS.forEach((p, i) => { const b = document.createElement("button"); b.type = "button"; b.textContent = p.name; b.addEventListener("click", () => { S = { ...p.s }; activePreset = i; draw(); }); pHost.appendChild(b); });
+pHost.appendChild(why);
+function set(k, v) { S[k] = v; activePreset = PRESETS.findIndex((p) => Object.keys(p.s).every((kk) => p.s[kk] === S[kk])); draw(); }
+function syncControls() {
+  for (const c of CONTROLS) {
+    if (c.range) { ctlEls[c.k].inp.value = S[c.k]; ctlEls[c.k].sm.textContent = S.mark === "text" ? "not used with text marks" : `${S[c.k]}%`; ctlEls[c.k].inp.disabled = S.mark === "text"; }
+    else for (const b of ctlEls[c.k].children) b.setAttribute("aria-pressed", String(b.dataset.v === S[c.k]));
+  }
+  [...pHost.querySelectorAll("button")].forEach((b, i) => b.setAttribute("aria-pressed", String(i === activePreset)));
+  why.textContent = activePreset >= 0 ? PRESETS[activePreset].why : "Custom mix.";
+}
+
+/* legend */
+const legend = document.getElementById("legend");
+function drawLegend() {
+  legend.innerHTML = "";
+  if (S.color === "one") { legend.innerHTML = `<span><i style="background:${MONO}"></i>every keyword (groups shown by position${S.bg !== "none" ? " and background" : ""} only)</span>`; return; }
+  const seen = new Set();
+  for (const x of D.terms.slice().sort((a, b) => a.c - b.c)) if (grouped(x.c) && !seen.has(x.c)) { seen.add(x.c); legend.insertAdjacentHTML("beforeend", `<span><i style="background:${CAT[x.c % CAT.length]}"></i>${groupName(x.c)}</span>`); }
+  legend.insertAdjacentHTML("beforeend", `<span><i style="background:${GREY}"></i>no group</span>`);
+}
+
+/* geometry helpers */
+function el(p, tag, a, text) { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (text != null) e.textContent = text; p.appendChild(e); return e; }
+function hull(pts) {
+  pts = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo = [], up = [];
+  for (const p of pts) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+  for (const p of pts.slice().reverse()) { while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
+function smoothClosed(p) { // Catmull-Rom through hull points, closed
+  const n = p.length; let d = `M${p[0][0]},${p[0][1]}`;
+  for (let i = 0; i < n; i++) {
+    const p0 = p[(i - 1 + n) % n], p1 = p[i], p2 = p[(i + 1) % n], p3 = p[(i + 2) % n];
+    d += ` C${p1[0] + (p2[0] - p0[0]) / 6},${p1[1] + (p2[1] - p0[1]) / 6} ${p2[0] - (p3[0] - p1[0]) / 6},${p2[1] - (p3[1] - p1[1]) / 6} ${p2[0]},${p2[1]}`;
+  }
+  return d + "Z";
+}
+function placeLabels(items, obstacles) {
+  const boxes = obstacles.slice();
+  const hit = (b) => boxes.some((o) => b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y);
+  for (const it of items.slice().sort((a, b) => b.r - a.r)) {
+    const w = it.t.length * 7.2 + 4, h = 14, r = it.r;
+    const tries = [
+      { x: it.x - w / 2, y: it.y - r - 4 - h, ax: "middle", tx: it.x, ty: it.y - r - 6 },
+      { x: it.x - w / 2, y: it.y + r + 4, ax: "middle", tx: it.x, ty: it.y + r + 15 },
+      { x: it.x + r + 4, y: it.y - h / 2, ax: "start", tx: it.x + r + 5, ty: it.y + 4 },
+      { x: it.x - r - 4 - w, y: it.y - h / 2, ax: "end", tx: it.x - r - 5, ty: it.y + 4 },
+      { x: it.x + r * .7, y: it.y - r - 2 - h, ax: "start", tx: it.x + r * .7, ty: it.y - r - 4 },
+      { x: it.x - r * .7 - w, y: it.y - r - 2 - h, ax: "end", tx: it.x - r * .7, ty: it.y - r - 4 },
+      { x: it.x + r * .7, y: it.y + r + 2, ax: "start", tx: it.x + r * .7, ty: it.y + r + 13 },
+      { x: it.x - r * .7 - w, y: it.y + r + 2, ax: "end", tx: it.x - r * .7, ty: it.y + r + 13 }
+    ];
+    const pick = tries.find((b) => !hit({ ...b, w, h })) || tries[0];
+    boxes.push({ x: pick.x, y: pick.y, w, h }); it.place = pick;
+  }
+  return items;
+}
+
+/* tooltip */
+const tip = document.getElementById("tip");
+function move(e) { const r = tip.getBoundingClientRect(); let x = e.clientX + 14, y = e.clientY + 14; if (x + r.width > innerWidth - 8) x = e.clientX - r.width - 14; if (y + r.height > innerHeight - 8) y = e.clientY - r.height - 14; tip.style.left = Math.max(8, x) + "px"; tip.style.top = Math.max(8, y) + "px"; }
+
+/* "Grouped": the tight UMAP layout with each word pulled 65% of the way to its group's
+   centre. Where groups sit stays UMAP's; spacing inside a group no longer means anything. */
+function groupedLayout() {
+  const V = D.variants[S.profile + ":tight"], cen = {};
+  D.terms.forEach((x, i) => { if (!grouped(x.c)) return; const c = (cen[x.c] ??= [0, 0, 0]); c[0] += V[i][0]; c[1] += V[i][1]; c[2]++; });
+  return V.map((p, i) => { const c = cen[D.terms[i].c]; return c ? [p[0] + (c[0] / c[2] - p[0]) * 0.65, p[1] + (c[1] / c[2] - p[1]) * 0.65] : p.slice(); });
+}
+// Push apart words whose marks overlap; words of one group may touch, other groups keep a gap.
+// Marks are boxes (w, h): circles for dots and bubbles, the word's own size for text.
+function separate(pts, box) {
+  for (let it = 0; it < 160; it++) for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+    const a = pts[i], b = pts[j], same = a.c === b.c && grouped(a.c), gap = same ? (S.mark === "text" ? 10 : 2) : 30;
+    const A = box(a), B = box(b);
+    const ox = (A.w + B.w) / 2 + gap - Math.abs(b.x - a.x), oy = (A.h + B.h) / 2 + gap - Math.abs(b.y - a.y);
+    if (ox <= 0 || oy <= 0) continue;
+    if (ox / A.w < oy / A.h) { const m = ox / 2 * Math.sign(b.x - a.x || 1); a.x -= m; b.x += m; }
+    else { const m = oy / 2 * Math.sign(b.y - a.y || 1); a.y -= m; b.y += m; }
+  }
+  for (const p of pts) { p.x = Math.max(PAD - 10, Math.min(W - PAD + 10, p.x)); p.y = Math.max(PAD - 20, Math.min(H - PAD + 20, p.y)); }
+}
+
+/* map */
+const W = 760, H = 520, PAD = 70;
+function draw() {
+  applyGroups(); syncControls(); drawLegend();
+  const host = document.getElementById("map"); host.innerHTML = "";
+  const s = el(host, "svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Keyword map: words placed by the company they keep" });
+  const V = S.spread === "grouped" ? groupedLayout() : D.variants[S.profile + ":" + S.spread];
+  const xs = V.map((p) => p[0]), ys = V.map((p) => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const k = Math.min((W - 2 * PAD) / (x1 - x0 || 1), (H - 2 * PAD) / (y1 - y0 || 1)); // one scale for both axes, so distances stay true
+  const ox = (W - k * (x1 - x0)) / 2, oy = (H - k * (y1 - y0)) / 2;
+  const colorOf = (x) => S.color === "one" ? MONO : grouped(x.c) ? CAT[x.c % CAT.length] : GREY;
+  const rel = (x) => S.size === "same" ? 0.55 : Math.sqrt(x.f / maxF);
+  const R = (x) => S.mark === "bubble" ? 14 + rel(x) * 30 : S.mark === "dot" ? 4 + rel(x) * 9 : 0;
+  const pts = D.terms.map((x, i) => ({ ...x, x: ox + (V[i][0] - x0) * k, y: oy + (V[i][1] - y0) * k }));
+  if (S.spread === "grouped") separate(pts, (p) => {
+    if (S.mark === "text") { const fs = S.size === "same" ? 15 : 11 + rel(p) * 15; return { w: p.t.length * fs * .6, h: fs * 1.1 }; }
+    const d = S.mark === "bubble" ? 2 * (14 + rel(p) * 30) * .82 : 40; return { w: d, h: d };
+  });
+  pts.forEach((p) => { p.r = R(p); p.fs = S.mark === "text" ? (S.size === "same" ? 15 : 11 + rel(p) * 15) : 12; });
+  const P = Object.fromEntries(pts.map((p) => [p.t, p]));
+  const groups = {}; pts.forEach((p) => grouped(p.c) && (groups[p.c] ??= []).push(p));
+  const gcol = (c) => S.color === "one" ? MONO : CAT[c % CAT.length];
+
+  /* background regions */
+  const defs = el(s, "defs", {});
+  if (S.bg === "glow") {
+    const f = el(defs, "filter", { id: "glow", x: 0, y: 0, width: W, height: H, filterUnits: "userSpaceOnUse" });
+    el(f, "feGaussianBlur", { stdDeviation: 22 });
+    for (const c in groups) { const g = el(s, "g", { filter: "url(#glow)", opacity: 0.5 }); for (const p of groups[c]) el(g, "circle", { cx: p.x, cy: p.y, r: 34 + p.r * .4, fill: gcol(+c) }); }
+  }
+  if (S.bg === "cloud") {
+    // Metaball cloud: blur the group's circles, then sharpen the alpha so they merge into one soft-edged shape.
+    const f = el(defs, "filter", { id: "goo", x: 0, y: 0, width: W, height: H, filterUnits: "userSpaceOnUse" });
+    el(f, "feGaussianBlur", { in: "SourceGraphic", stdDeviation: 14, result: "b" });
+    el(f, "feColorMatrix", { in: "b", mode: "matrix", values: "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9", result: "g" });
+    el(f, "feGaussianBlur", { in: "g", stdDeviation: 3 });
+    for (const c in groups) { const g = el(s, "g", { filter: "url(#goo)", opacity: 0.26 }); for (const p of groups[c]) el(g, "circle", { cx: p.x, cy: p.y, r: 44 + p.r * .35, fill: gcol(+c) }); }
+  }
+  if (S.bg === "outline") {
+    for (const c in groups) {
+      const ring = []; for (const p of groups[c]) { const rr = 30 + (S.mark === "text" ? p.fs * p.t.length * .28 : p.r); for (let a = 0; a < 16; a++) ring.push([p.x + Math.cos(a / 16 * 2 * Math.PI) * rr, p.y + Math.sin(a / 16 * 2 * Math.PI) * (S.mark === "text" ? 26 : rr)]); }
+      el(s, "path", { d: smoothClosed(hull(ring)), fill: gcol(+c), "fill-opacity": 0.08, stroke: gcol(+c), "stroke-opacity": 0.7, "stroke-width": 1.5, "stroke-dasharray": "5 4" });
+    }
+  }
+
+  /* links */
+  const linkG = el(s, "g", {});
+  const lines = S.links === "off" ? [] : D.links.map((l) => {
+    const a = P[l.a], b = P[l.b];
+    const e = el(linkG, "line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: css("--ink-2"), "stroke-width": 0.6 + l.c * 0.5, "stroke-opacity": S.links === "on" ? 0.22 : 0, "stroke-linecap": "round" });
+    return { e, l };
+  });
+
+  /* group names: above the group if there's room, else below, left or right */
+  const nameBoxes = [], markBoxes = pts.map((p) => { const w = S.mark === "text" ? p.t.length * p.fs * .58 : 2 * p.r, h = S.mark === "text" ? p.fs : 2 * p.r; return { x: p.x - w / 2 - 2, y: p.y - h / 2 - 2, w: w + 4, h: h + 4 }; });
+  const clash = (b) => nameBoxes.concat(markBoxes).some((o) => b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y) || b.x < 4 || b.x + b.w > W - 4 || b.y < 4 || b.y + b.h > H - 4;
+  if (S.names === "on") for (const c in groups) {
+    const m = groups[c], cx = m.reduce((a, p) => a + p.x, 0) / m.length, cy = m.reduce((a, p) => a + p.y, 0) / m.length;
+    const ext = (p) => Math.max(p.r, S.mark === "text" ? p.fs * .7 : 0);
+    const top = Math.min(...m.map((p) => p.y - ext(p))), bot = Math.max(...m.map((p) => p.y + ext(p)));
+    const left = Math.min(...m.map((p) => p.x - Math.max(p.r, S.mark === "text" ? p.t.length * p.fs * .3 : 0))), right = Math.max(...m.map((p) => p.x + Math.max(p.r, S.mark === "text" ? p.t.length * p.fs * .3 : 0)));
+    const txt = groupName(+c), w = txt.length * 7.6 + 10, h = 14, gap = S.bg === "none" ? 10 : 22;
+    const tries = [[cx - w / 2, top - gap - h], [cx - w / 2, bot + gap], [left - gap - w, cy - h / 2], [right + gap, cy - h / 2], [cx - w / 2, top - gap - h - 18], [cx - w / 2, bot + gap + 18]].map(([x, y]) => ({ x, y, w, h }));
+    const b = tries.find((t) => !clash(t)) || tries[0];
+    nameBoxes.push(b);
+    el(s, "circle", { cx: b.x - 2, cy: b.y + 7, r: 4, fill: gcol(+c) });
+    el(s, "text", { x: b.x + w / 2 + 4, y: b.y + 11, "text-anchor": "middle", class: "t-group" }, txt);
+  }
+
+  /* marks */
+  const markG = el(s, "g", { style: "isolation:isolate" });
+  const nodes = [];
+  const showLabel = (p) => S.labels !== "off" && (S.labels !== "main" || p.f >= 7);
+  for (const p of pts) {
+    const g = el(markG, "g", { class: "node", tabindex: 0, role: "img", "aria-label": `${p.t}: in ${p.f} sentences` });
+    const col = colorOf(p);
+    // Solid dots get a surface ring to separate them; see-through dots get a ring in their own color so they don't read as holes.
+    if (S.mark === "dot") el(g, "circle", S.opacity >= 80 ? { cx: p.x, cy: p.y, r: p.r, fill: col, "fill-opacity": S.opacity / 100, stroke: css("--panel"), "stroke-width": 2 }
+      : { cx: p.x, cy: p.y, r: p.r, fill: col, "fill-opacity": Math.max(0.1, S.opacity / 100), stroke: col, "stroke-width": 1.75 });
+    if (S.mark === "bubble") el(g, "circle", { cx: p.x, cy: p.y, r: p.r, fill: col, "fill-opacity": S.opacity / 100, stroke: col, "stroke-opacity": Math.min(1, S.opacity / 100 + 0.35), "stroke-width": 1.2, style: "mix-blend-mode:screen" });
+    if (S.mark === "text") { const t = el(g, "text", { x: p.x, y: p.y + p.fs * .35, "text-anchor": "middle", class: "t-node", fill: col, style: `font-size:${p.fs}px;fill:${col}` }, p.t); }
+    if (S.mark === "bubble" && showLabel(p) && S.labels !== "beside") el(g, "text", { x: p.x, y: p.y + 4, "text-anchor": "middle", class: "t-in" }, p.t);
+    nodes.push({ g, p });
+  }
+  // Labels beside the mark (dots always; bubbles when "Beside"); dots with "Center" fall back to beside.
+  const besideItems = pts.filter((p) => S.mark !== "text" && showLabel(p) && (S.mark === "dot" || S.labels === "beside"));
+  if (besideItems.length) {
+    const obstacles = pts.map((p) => ({ x: p.x - p.r - 2, y: p.y - p.r - 2, w: 2 * p.r + 4, h: 2 * p.r + 4 })).concat(nameBoxes);
+    const lab = el(s, "g", { "pointer-events": "none" });
+    for (const p of placeLabels(besideItems.map((p) => ({ ...p })), obstacles)) el(lab, "text", { x: p.place.tx, y: p.place.ty, "text-anchor": p.place.ax, class: "t-node" }, p.t);
+  }
+
+  /* hover: tooltip, light up partners */
+  for (const { g, p } of nodes) {
+    const ps = partners(p.t), mine = new Set([p.t, ...ps.map((q) => q.o)]);
+    const html = `<b>${p.t}</b> · in ${p.f} sentence${p.f === 1 ? "" : "s"}<br><span class="m">${grouped(p.c) ? "group: " + groupName(p.c) : "no group"}</span>` + (ps.length ? `<br>${ps.slice(0, 4).map((q) => `${q.o} <span class="m">${q.c}×</span>`).join(" · ")}` : "") + `<br><span class="m">most similar profile:</span> ${p.nn[S.profile].join(", ")}`;
+    const on = (e) => {
+      tip.innerHTML = html; tip.hidden = false; if (e.clientX != null) move(e);
+      for (const n of nodes) n.g.classList.toggle("dim", !mine.has(n.p.t));
+      for (const { e: ln, l } of lines) { const hit = l.a === p.t || l.b === p.t; ln.setAttribute("stroke-opacity", hit ? 0.75 : S.links === "on" ? 0.06 : 0); }
+    };
+    const off = () => { tip.hidden = true; for (const n of nodes) n.g.classList.remove("dim"); for (const { e: ln } of lines) ln.setAttribute("stroke-opacity", S.links === "on" ? 0.22 : 0); };
+    g.addEventListener("pointerenter", on); g.addEventListener("pointermove", move); g.addEventListener("pointerleave", off);
+    g.addEventListener("focus", () => { on({}); const r = g.getBoundingClientRect(); tip.style.left = r.right + 8 + "px"; tip.style.top = r.top + "px"; }); g.addEventListener("blur", off);
+  }
+  el(s, "text", { x: 12, y: H - 12, class: "t-axis" }, "no axes: only nearness matters");
+}
+draw();
+</script>
