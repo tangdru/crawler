@@ -275,7 +275,9 @@ function startLens(lens, autoplay = true) {
 function crawlTitle() {
   const lens = ui.lens === "scan" ? (ui.skim ? ui.skim.lens : ui.aiRun ? ui.aiRun.lens : "insights") : ui.lens;
   const n = project.sources.length, i = project.active;
-  const step = ui.queue ? `source ${ui.queue.pos + 1} of ${ui.queue.list.length}` : ui.skim ? `skimming source ${ui.skim.skimmed.size + 1} of ${n}` : n > 1 ? `S${i + 1} of ${n}` : "";
+  // The current source number takes the lens color: "source 2 of 3".
+  const num = (k) => `<b class="num" style="color:${LENS_ACCENT[lens] || "#fff"}">${k}</b>`;
+  const step = ui.queue ? `source ${num(ui.queue.pos + 1)} of ${ui.queue.list.length}` : ui.skim ? `skimming source ${num(ui.skim.skimmed.size + 1)} of ${n}` : n > 1 ? `S${num(i + 1)} of ${n}` : "";
   const name = LENS[lens] ? LENS[lens].name : lens;
   $("crawlTitle").innerHTML = `<b style="color:${LENS_ACCENT[lens] || "#fff"}">${esc(name)}</b>${ui.lens === "scan" ? " · Claude is reading" : ""}${step ? ` · ${step}` : ""} · <span>S${i + 1} ${esc(active().model.title)}</span>`;
 }
@@ -688,7 +690,7 @@ function hud(p) {
     else add("thinking…", "hchip", col);
     return;
   }
-  if (ui.queue) add(`source <b>${ui.queue.pos + 1}</b> of ${ui.queue.list.length}`, "stat");
+  if (ui.queue) add(`source <b style="color:${LENS_ACCENT[ui.queue.lens] || "#fff"}">${ui.queue.pos + 1}</b> of ${ui.queue.list.length}`, "stat");
   add(`S${project.active + 1} read <b>${p.idx.toLocaleString("en-US")}</b>/${p.total.toLocaleString("en-US")}`, "stat");
   if (p.lens === "references") {
     const n = Object.values(p.counts).reduce((a, b) => a + b, 0);

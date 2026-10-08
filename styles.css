@@ -449,3 +449,4 @@ body.mode-sources main { max-width: calc(68ch + 340px); padding-left: 340px; }
   .library { position: static; width: auto; margin: calc(var(--head-h, 60px) + 16px) 16px 0; }
   body.mode-sources main { max-width: 68ch; padding-left: 16px; padding-top: 24px; }
 }
+.crawl-title b.num { font-weight: 700; }
