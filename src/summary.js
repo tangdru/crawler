@@ -265,10 +265,6 @@ export class Summary {
         this.setScope(keys);
       });
     });
-    const hint = document.createElement("span");
-    hint.className = "scope-hint";
-    hint.textContent = all ? "Tap a source to see it alone; tap more to combine." : "Tap sources to add or remove them.";
-    bar.appendChild(hint);
     parent.appendChild(bar);
   }
   // Changing the sources shown re-renders every section, and sections above can grow or
