@@ -85,11 +85,7 @@ export class Summary {
   panel(title, sub, wide) {
     const sec = document.createElement("section");
     sec.className = "panel" + (wide ? " wide" : "");
-    const h = document.createElement("h3");
-    // A dot in the color the crawler uses for this section's lens ties each plot to its crawl.
-    if (this.lens) { const dot = document.createElement("i"); dot.className = "lens-dot"; dot.style.background = this.lens.accent; dot.style.boxShadow = `0 0 6px ${this.lens.accent}`; dot.title = `${this.lens.name} lens`; h.appendChild(dot); }
-    h.appendChild(document.createTextNode(title));
-    sec.appendChild(h);
+    const h = document.createElement("h3"); h.textContent = title; sec.appendChild(h);
     if (sub) { const p = document.createElement("p"); p.className = "sub"; p.textContent = sub; sec.appendChild(p); }
     const body = document.createElement("div"); body.className = "chart"; sec.appendChild(body);
     this.grid.appendChild(sec);
@@ -112,7 +108,6 @@ export class Summary {
     const h = document.createElement("div");
     h.className = "sec-head";
     const lens = LENS[title.toLowerCase()];
-    this.lens = lens || null;
     const what = lens ? `<p class="what">${esc(lens.question)}<span>${lens.claude ? "Claude" : "counted in your browser"}</span></p>` : "";
     h.innerHTML = `<h2>${esc(title)}</h2>${what}${sub ? `<p class="sub">${esc(sub)}</p>` : ""}`;
     this.root.appendChild(h);
@@ -164,7 +159,7 @@ export class Summary {
     }
 
     this.insightsSection(project);
-    if (project.ai.uxr) this.uxrSection(project);
+    this.uxrSection(project);
 
     if (ran.tone) {
       this.section("Tone", scope);
@@ -415,6 +410,16 @@ export class Summary {
   /* ----- UXR: research synthesis ----- */
   uxrSection(project) {
     const res = project.ai.uxr;
+    if (!res) {
+      // Not run yet: a slim prompt, since UXR is a separate, specialist run.
+      this.section("UXR", "A UX research read of your sources by Claude: themes with quotes, pain points, the groups of people in your sources, jobs to be done and opportunities. Best for interviews, reviews and survey answers. A separate run from Insights.");
+      const body = this.panel("Run UXR synthesis", "", true);
+      body.innerHTML = `<p class="overview">Not run yet. It takes 20 seconds to 2 minutes and costs a few cents on your Anthropic account.</p>`;
+      const b = document.createElement("button"); b.type = "button"; b.className = "primary cta"; b.textContent = "Run UXR synthesis with Claude";
+      b.addEventListener("click", () => this.runAI("uxr"));
+      body.appendChild(b);
+      return;
+    }
     this.section("UXR", this.aiNote(res, project, "UXR"));
     const ov = this.panel("Key findings", res.question ? `Research question: ${res.question}` : "", true);
     const p = document.createElement("p"); p.className = "overview"; p.textContent = res.overview; ov.appendChild(p);
