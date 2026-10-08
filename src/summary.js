@@ -114,8 +114,8 @@ export class Summary {
     const lens = LENS[title.toLowerCase()];
     const what = lens ? `<p class="what">${esc(lens.question)}<span>${lens.claude ? "Claude" : "counted in your browser"}</span></p>` : "";
     h.innerHTML = `<div class="sec-title"><h2>${esc(title)}</h2><div class="sec-actions"></div></div>${what}${sub ? `<p class="sub">${esc(sub)}</p>` : ""}`;
+    h.id = lens ? `sec-${lens.id}` : "sec-overview";
     if (lens) {
-      h.id = `sec-${lens.id}`;
       // A lens that has run can be replayed (the crawl again), and a Claude lens run again.
       const acts = h.querySelector(".sec-actions");
       const btn = (label, title, fn) => { const b = document.createElement("button"); b.type = "button"; b.innerHTML = label; b.title = title; b.addEventListener("click", fn); acts.appendChild(b); };
@@ -278,11 +278,28 @@ export class Summary {
     bar.appendChild(hint);
     parent.appendChild(bar);
   }
+  // Changing the sources shown re-renders every section, and sections above can grow or
+  // shrink. Keep the section you're reading where it is: anchor to the section under the
+  // sticky bar and how far into it you've scrolled.
   setScope(keys) {
     this.scopeKeys = keys;
-    const y = window.scrollY;
+    const top = this.readingLine();
+    let anchor = null, delta = 0;
+    for (const h of this.root.querySelectorAll(".sec-head[id]")) {
+      const y = h.getBoundingClientRect().top;
+      if (y <= top + 1) { anchor = h.id; delta = top - y; } else break;
+    }
+    const fallback = window.scrollY;
     this.render(this.project);
-    window.scrollTo(0, y);
+    const h = anchor && document.getElementById(anchor);
+    if (h) window.scrollTo(0, window.scrollY + h.getBoundingClientRect().top - top + delta);
+    else window.scrollTo(0, fallback);
+  }
+  // The line just under the fixed header and the sticky source/jump bar.
+  readingLine() {
+    const bar = document.querySelector(".bar"), nav = this.root.querySelector(".sum-nav");
+    const navBottom = nav && getComputedStyle(nav).position === "sticky" ? nav.getBoundingClientRect().bottom : 0;
+    return Math.max(bar ? bar.getBoundingClientRect().bottom : 0, navBottom);
   }
 
   /* ---------- project level: Claude ---------- */
